@@ -1,16 +1,3 @@
-# genspark2api
-
-OpenAI-compatible API bridge for the Genspark web session — **multi-account round-robin**,
-streaming support, and an automated registration toolkit.
-
-The bridge reuses a web session **you exported yourself**, so it works on the free tier
-where the official API key path is blocked. The browser is only used once, to export
-cookies; the proxy itself is pure HTTP.
-
----
-
-## How it works
-
 ```
 OpenAI-compatible client
         │  POST /v1/chat/completions   (Authorization: Bearer <api-key>)
