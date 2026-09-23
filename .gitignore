@@ -10,6 +10,7 @@ gs_export[0-9]*.py
 # ---- Browser profile / runtime state ----
 profile/
 profile_*/
+gs_login_profile/
 out/
 out_*/
 gs_cmd.txt
@@ -32,6 +33,9 @@ dist_test/
 
 # ---- Local reference clones ----
 _ref_m365/
+
+# ---- Temp scripts ----
+_check.py
 
 # ---- Editor / OS ----
 .vscode/

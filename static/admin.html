@@ -1147,11 +1147,21 @@
     var cookieFile = $('#addCookie').value.trim();
     var proxy = $('#addProxy').value.trim();
     if (!seq || seq < 1) { toast('序号必须是大于 0 的整数', 'error'); return; }
-    if (!email || !cookieFile) { toast('邮箱和 Cookie 文件路径不能为空', 'error'); return; }
+    if (!email) { toast('邮箱不能为空', 'error'); return; }
+    if (!cookieFile) {
+      toast('Cookie 文件路径或 Cookie 文本不能为空', 'error');
+      return;
+    }
+    var body = { seq: seq, email: email, cookie_file: cookieFile, proxy: proxy };
+    /* 如果输入的是 cookie 字符串（非文件路径），转为 cookie 字段让后端自动写文件 */
+    if (cookieFile.indexOf('=') !== -1 && !/\.json$/i.test(cookieFile)) {
+      body.cookie = cookieFile;
+      body.cookie_file = '';
+    }
     try {
       await api('/api/admin/accounts', {
         method: 'POST',
-        body: { seq: seq, email: email, cookie_file: cookieFile, proxy: proxy }
+        body: body
       });
       closeAddModal();
       toast('账号添加成功');
@@ -1214,6 +1224,8 @@
   window.cooldownAccount = cooldownAccount;
   window.resetAccount = resetAccount;
   window.deleteAccount = deleteAccount;
+  window.openGensparkLogin = openGensparkLogin;
+  window.pasteCookie = pasteCookie;
 
   document.addEventListener('DOMContentLoaded', init);
 })();
