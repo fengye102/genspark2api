@@ -170,8 +170,8 @@ live signup flow (2026-09-23):
 | Metric | Value |
 |---|---|
 | Success rate | 2/2 signups passed on the first image |
-| Solve time | 7–20 s |
-| Cost | ~$0.002 per solve |
+| Solve time | 6–20 s |
+| Cost | **$0.001 per solve** (measured: two single-solve balance deltas, billed with a ~30 s lag) |
 | Stability | 3/3 identical answers for the same image |
 
 **One implementation detail matters a lot:** read the image from `img.src` (a

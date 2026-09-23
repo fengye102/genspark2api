@@ -8,7 +8,8 @@ Key findings from testing:
     surrounding background and the distorted glyphs get misread.
   - Answer is stable for the same image (3/3 identical across retries).
   - Case may vary between submissions; Genspark's CAPTCHA is not case sensitive.
-  - Typical solve time: 7-20 s.
+  - Typical solve time: 6-20 s.
+  - Cost: $0.001 per solve (billing is applied with a ~30 s lag).
   - `min_len` / `max_len` hints are not honored by the solver.
 
 Usage:
