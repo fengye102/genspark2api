@@ -1,5 +1,6 @@
 # ---- Credentials / account data (NEVER commit) ----
 accounts.json
+config.json
 genspark-ipmap.json
 cookies*.json
 gs_cookies*.json

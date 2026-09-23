@@ -549,6 +549,9 @@
       <button class="nav-item" data-page="accounts">
         <i data-lucide="users"></i><span class="nav-label">账号管理</span>
       </button>
+      <button class="nav-item" data-page="settings">
+        <i data-lucide="settings"></i><span class="nav-label">设置</span>
+      </button>
       <button class="nav-item" data-page="about">
         <i data-lucide="info"></i><span class="nav-label">关于</span>
       </button>
@@ -660,6 +663,35 @@
         </div>
       </section>
 
+      <!-- 设置页 -->
+      <section id="page-settings" class="page" hidden>
+        <div class="page-header">
+          <div>
+            <h2>设置</h2>
+            <p class="sub">管理后台安全设置</p>
+          </div>
+        </div>
+        <div class="about-grid">
+          <div class="about-card glass" style="max-width:420px">
+            <h3 style="margin-top:0">修改管理员密码</h3>
+            <div class="form-group">
+              <label for="oldPwd">当前密码</label>
+              <input type="password" id="oldPwd" autocomplete="current-password" placeholder="当前登录密码">
+            </div>
+            <div class="form-group">
+              <label for="newPwd">新密码</label>
+              <input type="password" id="newPwd" autocomplete="new-password" placeholder="至少 6 位">
+            </div>
+            <div class="form-group">
+              <label for="newPwd2">确认新密码</label>
+              <input type="password" id="newPwd2" autocomplete="new-password" placeholder="再次输入新密码">
+            </div>
+            <button class="btn btn-primary" onclick="changePassword()">保存新密码</button>
+            <div id="pwdStatus" class="fetch-status" hidden style="margin-top:10px"></div>
+          </div>
+        </div>
+      </section>
+
       <!-- 关于页 -->
       <section id="page-about" class="page" hidden>
         <div class="page-header">
@@ -708,17 +740,14 @@
       <div class="form-group">
         <label for="addCookie">Cookie</label>
         <div style="display:flex;gap:8px;margin-bottom:8px">
-          <button type="button" class="btn btn-ghost" id="btnFetchCookie" onclick="openGensparkLogin()" style="white-space:nowrap">
-            <i data-lucide="globe" style="width:14px;height:14px"></i>打开 Genspark 登录页
+          <button type="button" class="btn btn-primary" id="btnFetchCookie" onclick="startCookieCapture()" style="white-space:nowrap">
+            <i data-lucide="globe" style="width:14px;height:14px"></i>获取 Cookie（自动登录）
           </button>
           <button type="button" class="btn btn-ghost" onclick="pasteCookie()" style="white-space:nowrap">
             <i data-lucide="clipboard" style="width:14px;height:14px"></i>从剪贴板粘贴
           </button>
         </div>
-        <div id="fetchSnippetRow" hidden style="margin-bottom:8px">
-          <textarea id="fetchSnippet" readonly rows="3" style="width:100%;font-size:11px;font-family:monospace" onclick="this.select()"></textarea>
-        </div>
-        <textarea id="addCookie" rows="3" placeholder="登录后回到此页，Cookie 将自动填入；或手动粘贴 Cookie 字符串" required style="width:100%;resize:vertical;font-family:monospace;font-size:12px"></textarea>
+        <textarea id="addCookie" rows="3" placeholder="登录 Genspark 后，Cookie 会自动填入；或手动粘贴" style="width:100%;resize:vertical;font-family:monospace;font-size:12px"></textarea>
         <div id="fetchStatus" class="fetch-status" hidden></div>
       </div>
       <div class="form-group">
@@ -1093,12 +1122,13 @@
   function closeAddModal() {
     $('#modalOverlay').hidden = true;
     $('#addForm').reset();
+    stopCapturePoll();
     $('#fetchStatus').hidden = true;
     $('#fetchStatus').className = 'fetch-status';
   }
 
-  /* ---------- 浏览器获取 Cookie（新标签页方案） ---------- */
-  var _gsTab = null;
+  /* ---------- 自动获取 Cookie（cloakbrowser 自动登录） ---------- */
+  var _captureTimer = null;
 
   function showFetchStatus(msg, cls) {
     var el = $('#fetchStatus');
@@ -1107,22 +1137,34 @@
     el.className = 'fetch-status' + (cls ? ' ' + cls : '');
   }
 
-  function openGensparkLogin() {
-    window.open('https://www.genspark.ai/agents?type=ai_chat', '_blank');
-    showFetchStatus(
-      '已在新标签页打开 Genspark。登录后，在 Genspark 页面地址栏粘贴下方代码并回车：',
-      ''
-    );
-    var token = getToken();
-    var origin = location.origin;
-    var snippet = "javascript:(function(){" +
-      "var cookies=document.cookie.split(';').map(function(c){var p=c.trim().split('=');return {name:p[0],value:p.slice(1).join('='),domain:'.genspark.ai',path:'/'}});" +
-      "fetch('" + origin + "/api/admin/import-cookie',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer " + token + "'},body:JSON.stringify({cookies:cookies})}).then(r=>r.json()).then(r=>{" +
-      "if(r.ok){alert('Cookie 导入成功！')}else{alert('导入失败：'+(r.detail||''))}" +
-      "}).catch(function(e){alert('请求失败：'+e.message)});" +
-      "})()";
-    $('#fetchSnippet').value = snippet;
-    $('#fetchSnippetRow').hidden = false;
+  function stopCapturePoll() {
+    if (_captureTimer) { clearInterval(_captureTimer); _captureTimer = null; }
+  }
+
+  async function startCookieCapture() {
+    try {
+      await api('/api/admin/start-login-capture', { method: 'POST', body: {} });
+      showFetchStatus('已打开登录窗口，请在弹出的浏览器里登录 Genspark…（登录成功后自动获取，无需操作）', '');
+      stopCapturePoll();
+      _captureTimer = setInterval(pollCaptureStatus, 2000);
+    } catch (e) {
+      showFetchStatus('启动失败：' + e.message, 'error');
+    }
+  }
+
+  async function pollCaptureStatus() {
+    try {
+      var r = await api('/api/admin/login-capture-status');
+      if (r.status === 'done' && r.cookie) {
+        stopCapturePoll();
+        $('#addCookie').value = r.cookie;
+        if (r.email && !$('#addEmail').value) { $('#addEmail').value = r.email; }
+        showFetchStatus('✅ 已获取 Cookie（含 session_id），点击「添加」即可', 'done');
+      } else if (r.status === 'error') {
+        stopCapturePoll();
+        showFetchStatus('获取失败：' + (r.error || '未知错误'), 'error');
+      }
+    } catch (e) { /* 忽略轮询错误 */ }
   }
 
   async function pasteCookie() {
@@ -1172,6 +1214,29 @@
   }
 
   /* ---------- 关于页 ---------- */
+  /* ---------- 设置页：修改密码 ---------- */
+  async function changePassword() {
+    var oldPwd = $('#oldPwd').value;
+    var newPwd = $('#newPwd').value;
+    var newPwd2 = $('#newPwd2').value;
+    var st = $('#pwdStatus');
+    function msg(t, cls) { st.textContent = t; st.hidden = false; st.className = 'fetch-status ' + cls; }
+    if (!oldPwd || !newPwd) { msg('请填写当前密码和新密码', 'error'); return; }
+    if (newPwd.length < 6) { msg('新密码至少 6 位', 'error'); return; }
+    if (newPwd !== newPwd2) { msg('两次输入的新密码不一致', 'error'); return; }
+    try {
+      await api('/api/admin/change-password', {
+        method: 'POST',
+        body: { old_password: oldPwd, new_password: newPwd }
+      });
+      msg('✅ 密码已修改，请重新登录', 'done');
+      /* token 已全部失效，2 秒后退回登录页 */
+      setTimeout(function () { clearSession(); location.reload(); }, 2000);
+    } catch (e) {
+      msg(e.message, 'error');
+    }
+  }
+
   async function loadAbout() {
     $('#cfgPort').textContent = location.port || (location.protocol === 'https:' ? '443' : '80');
     try {
@@ -1224,8 +1289,9 @@
   window.cooldownAccount = cooldownAccount;
   window.resetAccount = resetAccount;
   window.deleteAccount = deleteAccount;
-  window.openGensparkLogin = openGensparkLogin;
+  window.startCookieCapture = startCookieCapture;
   window.pasteCookie = pasteCookie;
+  window.changePassword = changePassword;
 
   document.addEventListener('DOMContentLoaded', init);
 })();

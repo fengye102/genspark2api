@@ -16,6 +16,7 @@
 """
 import json
 import os
+import re
 import secrets
 import sys
 import threading
@@ -25,7 +26,8 @@ import uuid
 from curl_cffi import requests as cffi
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
+from fastapi.responses import (HTMLResponse, JSONResponse, Response,
+                               StreamingResponse)
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
@@ -187,7 +189,33 @@ def save_accounts():
     os.replace(tmp, MAP_FILE)
 
 
-ADMIN_PASSWORD = os.environ.get("GS_ADMIN_PASSWORD", "admin123")
+# ---- 管理员密码：优先环境变量，其次配置文件，最后默认值 ----
+_CONFIG_FILE = os.path.join(BASE, "config.json")
+
+
+def _load_config():
+    try:
+        with open(_CONFIG_FILE, encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return {}
+
+
+def _save_config(cfg):
+    tmp = _CONFIG_FILE + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(cfg, f, ensure_ascii=False, indent=2)
+    os.replace(tmp, _CONFIG_FILE)
+
+
+def _load_password():
+    env = os.environ.get("GS_ADMIN_PASSWORD")
+    if env:
+        return env
+    return _load_config().get("admin_password", "admin123")
+
+
+ADMIN_PASSWORD = _load_password()
 TOKEN_TTL = 24 * 3600
 # {token: expiry_timestamp}，进程内存存储，重启即失效
 ADMIN_TOKENS = {}
@@ -430,6 +458,11 @@ class CooldownBody(BaseModel):
     seconds: int = Field(ge=0)
 
 
+class PasswordBody(BaseModel):
+    old_password: str
+    new_password: str
+
+
 def account_view(a):
     now = time.time()
     cooldown_left = max(0, round(a.cooldown_until - now))
@@ -457,6 +490,21 @@ def admin_login(body: LoginBody):
 @app.get("/api/admin/session")
 def admin_session(token: str = Depends(verify_admin)):
     return {"ok": True, "expires_in_s": round(ADMIN_TOKENS[token] - time.time())}
+
+
+@app.post("/api/admin/change-password")
+def admin_change_password(body: PasswordBody, _: str = Depends(verify_admin)):
+    global ADMIN_PASSWORD
+    if not secrets.compare_digest(body.old_password, ADMIN_PASSWORD):
+        raise HTTPException(status_code=400, detail="当前密码错误")
+    if len(body.new_password) < 6:
+        raise HTTPException(status_code=400, detail="新密码至少 6 位")
+    ADMIN_PASSWORD = body.new_password
+    cfg = _load_config()
+    cfg["admin_password"] = body.new_password
+    _save_config(cfg)
+    ADMIN_TOKENS.clear()  # 旧 token 全部失效，强制重新登录
+    return {"ok": True}
 
 
 @app.get("/api/admin/stats")
@@ -538,7 +586,146 @@ def admin_reset_account(seq: int, _: str = Depends(verify_admin)):
     return account_view(acc)
 
 
-# ---------- 浏览器获取 Cookie（轻量版：新标签页 + fetch 回传） ----------
+# ---------- 自动登录获取 Cookie（cloakbrowser） ----------
+# session_id 是 httpOnly，JS 读不到，只能用真实浏览器登录后由 Playwright 提取。
+# 点面板按钮 → 后端启动 cloakbrowser 打开 Genspark → 用户登录 → 检测到登录态后
+# 自动导出 cookie 存为 cookiesN.json，前端轮询拿到结果自动填进表单。
+_CAPTURE = {"status": "idle", "cookie": "", "cookie_file": "", "email": "", "error": ""}
+_CAPTURE_LOCK = threading.Lock()
+
+
+def _reset_capture():
+    with _CAPTURE_LOCK:
+        _CAPTURE.update({"status": "idle", "cookie": "", "cookie_file": "",
+                         "email": "", "error": ""})
+
+
+def _run_login_capture():
+    """后台线程：启动 cloakbrowser，等用户登录，导出 cookie。"""
+    try:
+        import cloakbrowser
+    except ImportError:
+        with _CAPTURE_LOCK:
+            _CAPTURE.update({"status": "error",
+                             "error": "未安装 cloakbrowser（pip install cloakbrowser）"})
+        return
+
+    profile = os.path.join(BASE, "gs_login_profile")
+    os.makedirs(profile, exist_ok=True)
+    browser = None
+    try:
+        with _CAPTURE_LOCK:
+            _CAPTURE["status"] = "waiting"
+        browser = cloakbrowser.launch_persistent_context(
+            user_data_dir=profile, headless=False, stealth_args=True,
+            viewport={"width": 1280, "height": 840},
+        )
+        page = browser.pages[0] if browser.pages else browser.new_page()
+        page.goto("https://www.genspark.ai/agents?type=ai_chat",
+                  wait_until="domcontentloaded", timeout=60000)
+        time.sleep(5)
+
+        # 轮询登录态，最多 5 分钟
+        deadline = time.time() + 300
+        logged = False
+        while time.time() < deadline:
+            try:
+                logged = page.evaluate("""async () => {
+                  try {
+                    const r = await fetch('/api/is_login', {credentials:'include'});
+                    const j = await r.json();
+                    return !!(j.data && j.data.is_login);
+                  } catch(e) { return false; }
+                }""")
+            except Exception:
+                logged = False
+            if logged:
+                break
+            time.sleep(3)
+
+        if not logged:
+            with _CAPTURE_LOCK:
+                _CAPTURE.update({"status": "error", "error": "等待登录超时（5 分钟）"})
+            return
+
+        # 导出全部 cookie（含 httpOnly）
+        cookies = browser.cookies()
+        names = {c.get("name") for c in cookies}
+        if "session_id" not in names:
+            with _CAPTURE_LOCK:
+                _CAPTURE.update({"status": "error",
+                                 "error": "已登录但未找到 session_id cookie"})
+            return
+
+        # 取登录邮箱
+        email = ""
+        try:
+            email = page.evaluate("""async () => {
+              try {
+                const r = await fetch('/api/user/info', {credentials:'include'});
+                const j = await r.json();
+                return (j.data && (j.data.email || j.data.user_email)) || '';
+              } catch(e) { return ''; }
+            }""")
+        except Exception:
+            pass
+
+        # 写成 cookiesN.json
+        n = 1
+        while os.path.exists(os.path.join(BASE, f"cookies{n}.json")):
+            n += 1
+        fname = f"cookies{n}.json"
+        out = {
+            "exported_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+            "source": "cloakbrowser_auto_login",
+            "cookies": [
+                {"name": c.get("name"), "value": c.get("value"),
+                 "domain": c.get("domain"), "path": c.get("path"),
+                 "httpOnly": c.get("httpOnly"), "secure": c.get("secure"),
+                 "sameSite": c.get("sameSite")}
+                for c in cookies
+            ],
+        }
+        with open(os.path.join(BASE, fname), "w", encoding="utf-8") as f:
+            json.dump(out, f, ensure_ascii=False, indent=2)
+
+        cookie_str = "; ".join(f"{c['name']}={c['value']}"
+                               for c in out["cookies"] if c.get("name"))
+        with _CAPTURE_LOCK:
+            _CAPTURE.update({"status": "done", "cookie": cookie_str,
+                             "cookie_file": fname, "email": email or ""})
+    except Exception as e:
+        with _CAPTURE_LOCK:
+            _CAPTURE.update({"status": "error", "error": str(e)})
+    finally:
+        try:
+            if browser:
+                browser.close()
+        except Exception:
+            pass
+
+
+@app.post("/api/admin/start-login-capture")
+def admin_start_login_capture(_: str = Depends(verify_admin)):
+    """启动一次自动登录取 cookie。"""
+    with _CAPTURE_LOCK:
+        if _CAPTURE["status"] == "waiting":
+            return {"ok": True, "status": "waiting"}
+    _reset_capture()
+    with _CAPTURE_LOCK:
+        _CAPTURE["status"] = "waiting"
+    threading.Thread(target=_run_login_capture, daemon=True).start()
+    return {"ok": True, "status": "waiting"}
+
+
+@app.get("/api/admin/login-capture-status")
+def admin_login_capture_status(_: str = Depends(verify_admin)):
+    """前端轮询登录捕获进度。"""
+    with _CAPTURE_LOCK:
+        return dict(_CAPTURE)
+
+
+# ---------- 手动导入 Cookie ----------
 
 class CookieImportBody(BaseModel):
     cookies: list = []
