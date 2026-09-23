@@ -810,10 +810,11 @@
     hideLoginError();
     try {
       var res = await api('/api/admin/login', { method: 'POST', body: { password: password } });
-      var token = res.token || ('local_' + password);
+      var token = res.token;
+      if (!token) throw new Error('登录失败：未获取到令牌');
       setSession(token, password);
       enterApp();
-      }
+    } catch (err) {
       showLoginError(err.message || '密码错误，请重试');
     }
   }
