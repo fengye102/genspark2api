@@ -196,6 +196,7 @@ if os.path.exists(COOKIE_FILE):
         pass
 
 # password, for the pool entry
+# NOTE: 密码仅用于注册流程本身，不写入 pool 文件
 pwd = None
 if os.path.exists(LOG):
     m = re.search(r"\[password\]\s+(\S+)",
@@ -213,7 +214,8 @@ if cogen:
             pass
     pool["accounts"] = [a for a in pool.get("accounts", []) if a.get("seq") != seq_i]
     pool["accounts"].append({
-        "seq": seq_i, "email": EMAIL, "password": pwd, "cogen_id": cogen,
+        "seq": seq_i, "email": EMAIL, "password": None,  # 密码不落盘
+        "cogen_id": cogen,
         "cookie_file": COOKIE_FILE, "proxy": os.environ.get("GS_PROXY", ""),
         "status": "active",
         "note": f"{time.strftime('%Y-%m-%d')} signup (automatic)",

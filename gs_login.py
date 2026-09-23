@@ -18,7 +18,7 @@ import cloakbrowser
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 PROFILE_DIR = os.path.join(BASE_DIR, "genspark_reg_profile")
-OUT_FILE = os.path.join(BASE_DIR, "gs_cookies.json")
+OUT_FILE = os.path.join(BASE_DIR, "cookies1.json")
 PROCEED_FILE = os.path.join(BASE_DIR, ".proceed")
 TARGET = "https://www.genspark.ai/agents?type=ai_chat"
 

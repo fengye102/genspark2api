@@ -14,6 +14,19 @@ import time
 
 import cloakbrowser
 
+def _sanitize_proxy(url):
+    """Remove credentials from proxy URL for safe storage."""
+    if not url:
+        return url
+    from urllib.parse import urlparse, urlunparse
+    p = urlparse(url)
+    if p.password or p.username:
+        host = p.hostname or ""
+        if p.port:
+            host += f":{p.port}"
+        return urlunparse((p.scheme, host, p.path, p.params, p.query, p.fragment))
+    return url
+
 ap = argparse.ArgumentParser()
 ap.add_argument("--profile", required=True, help="browser profile directory")
 ap.add_argument("--account", default="", help="account label/index")
@@ -56,7 +69,7 @@ out = {
     "account": args.account,
     "email": args.email,
     "cogen_id": d.get("cogen_id"),
-    "proxy": args.proxy,
+    "proxy": _sanitize_proxy(args.proxy),
     "exported_at": time.strftime("%Y-%m-%d %H:%M:%S"),
     "user_agent": pg.evaluate("() => navigator.userAgent"),
     "cookies": [{"name": c.get("name"), "value": c.get("value"),

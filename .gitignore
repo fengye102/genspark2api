@@ -24,6 +24,15 @@ __pycache__/
 venv/
 env/
 
+# ---- PyInstaller / build artifacts ----
+build/
+dist/
+dist_test/
+*.spec
+
+# ---- Local reference clones ----
+_ref_m365/
+
 # ---- Editor / OS ----
 .vscode/
 .idea/
