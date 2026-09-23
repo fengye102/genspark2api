@@ -24,6 +24,7 @@ import uuid
 
 from curl_cffi import requests as cffi
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
@@ -264,6 +265,17 @@ def parse_sse(text):
 
 app = FastAPI()
 START = time.time()
+
+# 允许从 Genspark 页面（bookmarklet）跨域 POST cookie 回本地管理端
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "https://www.genspark.ai",
+        "https://genspark.ai",
+    ],
+    allow_methods=["POST", "GET", "OPTIONS"],
+    allow_headers=["Content-Type", "Authorization"],
+)
 
 
 @app.get("/health")
