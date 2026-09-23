@@ -549,6 +549,9 @@
       <button class="nav-item" data-page="accounts">
         <i data-lucide="users"></i><span class="nav-label">账号管理</span>
       </button>
+      <button class="nav-item" data-page="keys">
+        <i data-lucide="key-round"></i><span class="nav-label">API 密钥</span>
+      </button>
       <button class="nav-item" data-page="settings">
         <i data-lucide="settings"></i><span class="nav-label">设置</span>
       </button>
@@ -660,6 +663,54 @@
               </tbody>
             </table>
           </div>
+        </div>
+      </section>
+
+      <!-- API 密钥页 -->
+      <section id="page-keys" class="page" hidden>
+        <div class="page-header">
+          <div>
+            <h2>API 密钥</h2>
+            <p class="sub">调用 /v1 接口时用作 Authorization: Bearer 凭证</p>
+          </div>
+          <button class="btn btn-primary" onclick="createKey()">
+            <i data-lucide="plus" style="width:14px;height:14px"></i>生成新密钥
+          </button>
+        </div>
+
+        <div id="newKeyBanner" class="about-card glass" hidden style="margin-bottom:16px;border:1px solid rgba(74,222,128,.4)">
+          <h3 style="margin-top:0;color:#4ade80">新密钥已生成 —— 只显示这一次，请立即复制保存</h3>
+          <div style="display:flex;gap:8px;align-items:center">
+            <code id="newKeyValue" class="mono" style="flex:1;word-break:break-all;font-size:13px;background:rgba(0,0,0,.25);padding:8px 10px;border-radius:6px"></code>
+            <button class="btn btn-ghost" onclick="copyNewKey()">
+              <i data-lucide="clipboard" style="width:14px;height:14px"></i>复制
+            </button>
+          </div>
+        </div>
+
+        <div class="table-card glass">
+          <div class="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>密钥（脱敏）</th>
+                  <th>操作</th>
+                </tr>
+              </thead>
+              <tbody id="keysBody">
+                <tr><td colspan="3" class="empty-cell">加载中…</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="about-card glass" style="margin-top:16px">
+          <h3 style="margin-top:0">调用示例</h3>
+          <pre class="mono" style="white-space:pre-wrap;font-size:12px;line-height:1.7;background:rgba(0,0,0,.25);padding:12px;border-radius:8px;margin:0">curl http://127.0.0.1:8899/v1/chat/completions \
+  -H "Authorization: Bearer sk-你的密钥" \
+  -H "Content-Type: application/json" \
+  -d '{"model":"claude-4-5-haiku","messages":[{"role":"user","content":"你好"}]}'</pre>
         </div>
       </section>
 
@@ -919,6 +970,7 @@
     if (page === 'dashboard') { loadDashboard(); startAutoRefresh(); }
     else { stopAutoRefresh(); }
     if (page === 'accounts') loadAccounts();
+    if (page === 'keys') loadKeys();
     if (page === 'about') loadAbout();
     refreshIcons();
   }
@@ -1213,6 +1265,71 @@
     }
   }
 
+  /* ---------- API 密钥 ---------- */
+  async function loadKeys() {
+    var tbody = $('#keysBody');
+    try {
+      var data = await api('/api/admin/keys');
+      var keys = data.keys || [];
+      if (!keys.length) {
+        tbody.innerHTML = '<tr><td colspan="3" class="empty-cell">暂无密钥，点右上角生成</td></tr>';
+        return;
+      }
+      tbody.innerHTML = keys.map(function (k, i) {
+        return '<tr>' +
+          '<td class="mono">' + (i + 1) + '</td>' +
+          '<td class="mono">' + k.prefix + '…' + k.suffix + '</td>' +
+          '<td><button class="btn btn-ghost" style="color:#f87171" onclick="deleteKey(' + i + ')">' +
+          '<i data-lucide="trash-2" style="width:14px;height:14px"></i>删除</button></td>' +
+          '</tr>';
+      }).join('');
+      refreshIcons();
+    } catch (err) {
+      tbody.innerHTML = '<tr><td colspan="3" class="empty-cell">加载失败：' + err.message + '</td></tr>';
+    }
+  }
+
+  async function createKey() {
+    try {
+      var data = await api('/api/admin/keys', { method: 'POST' });
+      if (!data.key) throw new Error('未返回密钥');
+      $('#newKeyValue').textContent = data.key;
+      $('#newKeyBanner').hidden = false;
+      toast('密钥已生成，请立即复制保存', 'success');
+      loadKeys();
+      refreshIcons();
+    } catch (err) {
+      toast('生成失败：' + err.message, 'error');
+    }
+  }
+
+  async function copyNewKey() {
+    var text = $('#newKeyValue').textContent;
+    try {
+      await navigator.clipboard.writeText(text);
+      toast('已复制到剪贴板', 'success');
+    } catch (e) {
+      /* clipboard API 不可用时退化为选中文本 */
+      var range = document.createRange();
+      range.selectNodeContents($('#newKeyValue'));
+      var sel = window.getSelection();
+      sel.removeAllRanges();
+      sel.addRange(range);
+      toast('复制失败，请手动复制选中的密钥', 'error');
+    }
+  }
+
+  async function deleteKey(index) {
+    if (!confirm('确定删除这把密钥？使用它的客户端会立即失效。')) return;
+    try {
+      await api('/api/admin/keys/' + index, { method: 'DELETE' });
+      toast('密钥已删除', 'success');
+      loadKeys();
+    } catch (err) {
+      toast('删除失败：' + err.message, 'error');
+    }
+  }
+
   /* ---------- 关于页 ---------- */
   /* ---------- 设置页：修改密码 ---------- */
   async function changePassword() {
@@ -1292,6 +1409,9 @@
   window.startCookieCapture = startCookieCapture;
   window.pasteCookie = pasteCookie;
   window.changePassword = changePassword;
+  window.createKey = createKey;
+  window.copyNewKey = copyNewKey;
+  window.deleteKey = deleteKey;
 
   document.addEventListener('DOMContentLoaded', init);
 })();

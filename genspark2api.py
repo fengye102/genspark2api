@@ -220,6 +220,42 @@ TOKEN_TTL = 24 * 3600
 # {token: expiry_timestamp}，进程内存存储，重启即失效
 ADMIN_TOKENS = {}
 
+# ---- API 密钥：调用 /v1/* 时用作 Bearer 凭证，持久化在 config.json 的 api_keys ----
+# 首次启动自动生成一把（向后兼容：此前 /v1/* 无鉴权，现强制要求密钥）
+def _init_api_keys():
+    env = os.environ.get("GS_API_KEY")
+    if env:
+        return [env]
+    cfg = _load_config()
+    keys = cfg.get("api_keys")
+    if not isinstance(keys, list) or not keys:
+        keys = ["sk-" + secrets.token_hex(24)]
+        cfg["api_keys"] = keys
+        try:
+            _save_config(cfg)
+        except Exception:
+            pass
+    return keys
+
+
+API_KEYS = _init_api_keys()
+
+
+def verify_api_key(authorization: str = Header(None)):
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(
+            status_code=401,
+            detail={"error": {"message": "缺少 API 密钥（Authorization: Bearer <key>）。"
+                                         "请到管理后台「API 密钥」页生成。",
+                              "type": "invalid_api_key"}})
+    key = authorization[7:].strip()
+    if not any(secrets.compare_digest(key, k) for k in API_KEYS):
+        raise HTTPException(
+            status_code=401,
+            detail={"error": {"message": "API 密钥无效",
+                              "type": "invalid_api_key"}})
+    return key
+
 
 def verify_admin(authorization: str = Header(None)):
     if not authorization or not authorization.startswith("Bearer "):
@@ -320,13 +356,13 @@ def health():
 
 
 @app.get("/v1/models")
-def models():
+def models(_: str = Depends(verify_api_key)):
     return {"object": "list", "data": [
         {"id": m, "object": "model", "owned_by": "genspark-web"} for m in MODELS]}
 
 
 @app.post("/v1/chat/completions")
-async def chat(req: Request):
+async def chat(req: Request, _: str = Depends(verify_api_key)):
     payload = await req.json()
     model = payload.get("model") or "claude-4-5-haiku"
     want_stream = bool(payload.get("stream"))
@@ -524,6 +560,44 @@ def admin_stats(_: str = Depends(verify_admin)):
 @app.get("/api/admin/accounts")
 def admin_list_accounts(_: str = Depends(verify_admin)):
     return {"accounts": [account_view(a) for a in ACCOUNTS]}
+
+
+# ---------- API 密钥管理 ----------
+
+def _persist_api_keys():
+    cfg = _load_config()
+    cfg["api_keys"] = list(API_KEYS)
+    _save_config(cfg)
+
+
+def _key_view(k):
+    return {"prefix": k[:10], "suffix": k[-4:], "length": len(k)}
+
+
+@app.get("/api/admin/keys")
+def admin_list_keys(_: str = Depends(verify_admin)):
+    # 出于安全只返回前缀/后缀，完整密钥仅创建时展示一次
+    return {"keys": [_key_view(k) for k in API_KEYS]}
+
+
+@app.post("/api/admin/keys", status_code=201)
+def admin_create_key(_: str = Depends(verify_admin)):
+    key = "sk-" + secrets.token_hex(24)
+    API_KEYS.append(key)
+    _persist_api_keys()
+    # 完整 key 只在这一个响应里出现一次
+    return {"key": key}
+
+
+@app.delete("/api/admin/keys/{index}")
+def admin_delete_key(index: int, _: str = Depends(verify_admin)):
+    if index < 0 or index >= len(API_KEYS):
+        raise HTTPException(status_code=404, detail="密钥不存在")
+    if len(API_KEYS) <= 1:
+        raise HTTPException(status_code=400, detail="至少保留一把密钥")
+    removed = API_KEYS.pop(index)
+    _persist_api_keys()
+    return {"ok": True, "removed": _key_view(removed)}
 
 
 @app.post("/api/admin/accounts", status_code=201)
