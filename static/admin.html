@@ -1,0 +1,1147 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="color-scheme" content="light dark">
+<title>Genspark2API 管理后台</title>
+<script src="https://unpkg.com/lucide@latest"></script>
+<style>
+  :root {
+    --bg: #f5f5f7;
+    --card-bg: rgba(255, 255, 255, 0.72);
+    --card-border: rgba(0, 0, 0, 0.06);
+    --sidebar-bg: rgba(250, 250, 252, 0.75);
+    --sidebar-border: rgba(0, 0, 0, 0.08);
+    --overlay: rgba(0, 0, 0, 0.32);
+    --input-bg: rgba(0, 0, 0, 0.035);
+    --input-border: rgba(0, 0, 0, 0.12);
+    --hover-bg: rgba(0, 0, 0, 0.045);
+    --active-bg: rgba(0, 113, 227, 0.12);
+    --active-text: #0071e3;
+    --text: #1d1d1f;
+    --text-secondary: #6e6e73;
+    --text-tertiary: #86868b;
+    --success: #34c759;
+    --warning: #ff9500;
+    --danger: #ff3b30;
+    --accent: #0071e3;
+    --accent-hover: #0077ed;
+    --danger-soft: rgba(255, 59, 48, 0.10);
+    --shadow: 0 4px 24px rgba(0, 0, 0, 0.06);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #000000;
+      --card-bg: rgba(22, 22, 23, 0.72);
+      --card-border: rgba(255, 255, 255, 0.10);
+      --sidebar-bg: rgba(20, 20, 22, 0.75);
+      --sidebar-border: rgba(255, 255, 255, 0.10);
+      --overlay: rgba(0, 0, 0, 0.55);
+      --input-bg: rgba(255, 255, 255, 0.06);
+      --input-border: rgba(255, 255, 255, 0.16);
+      --hover-bg: rgba(255, 255, 255, 0.06);
+      --active-bg: rgba(10, 132, 255, 0.18);
+      --active-text: #0a84ff;
+      --text: #f5f5f7;
+      --text-secondary: #a1a1a6;
+      --text-tertiary: #6e6e73;
+      --accent: #0a84ff;
+      --accent-hover: #409cff;
+      --danger-soft: rgba(255, 69, 58, 0.16);
+      --shadow: 0 4px 24px rgba(0, 0, 0, 0.4);
+    }
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html { -webkit-font-smoothing: antialiased; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC",
+      "Helvetica Neue", "Microsoft YaHei", sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    font-size: 14px;
+    line-height: 1.5;
+    transition: background 0.2s ease, color 0.2s ease;
+  }
+  [hidden] { display: none !important; }
+
+  /* ===== 通用组件 ===== */
+  .glass {
+    background: var(--card-bg);
+    backdrop-filter: blur(20px) saturate(180%);
+    -webkit-backdrop-filter: blur(20px) saturate(180%);
+    border: 1px solid var(--card-border);
+  }
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 8px 16px;
+    border: none;
+    border-radius: 10px;
+    font-size: 13px;
+    font-family: inherit;
+    cursor: pointer;
+    transition: background 0.2s ease, opacity 0.2s ease, color 0.2s ease;
+    white-space: nowrap;
+  }
+  .btn-primary { background: var(--accent); color: #fff; }
+  .btn-primary:hover { background: var(--accent-hover); }
+  .btn-ghost {
+    background: transparent;
+    color: var(--text-secondary);
+    border: 1px solid var(--card-border);
+  }
+  .btn-ghost:hover { background: var(--hover-bg); color: var(--text); }
+  .btn-danger-ghost {
+    background: transparent;
+    color: var(--danger);
+    border: 1px solid var(--card-border);
+  }
+  .btn-danger-ghost:hover { background: var(--danger-soft); }
+  .btn-block { width: 100%; }
+
+  .btn-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 30px;
+    border: none;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: background 0.2s ease, color 0.2s ease;
+  }
+  .btn-icon:hover { background: var(--hover-bg); color: var(--text); }
+  .btn-icon:disabled { opacity: 0.35; cursor: default; pointer-events: none; }
+  .btn-icon.danger:hover { background: var(--danger-soft); color: var(--danger); }
+  .btn-icon svg { width: 16px; height: 16px; }
+
+  .form-group { margin-bottom: 16px; }
+  .form-group label {
+    display: block;
+    font-size: 13px;
+    color: var(--text-secondary);
+    margin-bottom: 6px;
+  }
+  .form-group input {
+    width: 100%;
+    padding: 9px 12px;
+    font-size: 14px;
+    font-family: inherit;
+    color: var(--text);
+    background: var(--input-bg);
+    border: 1px solid var(--input-border);
+    border-radius: 10px;
+    outline: none;
+    transition: border-color 0.2s ease, background 0.2s ease;
+  }
+  .form-group input:focus { border-color: var(--accent); }
+
+  .table-card {
+    border-radius: 14px;
+    overflow: hidden;
+    box-shadow: var(--shadow);
+  }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  thead th {
+    text-align: left;
+    font-weight: 500;
+    color: var(--text-secondary);
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--card-border);
+    white-space: nowrap;
+  }
+  tbody td {
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--card-border);
+    color: var(--text);
+    white-space: nowrap;
+  }
+  tbody tr:last-child td { border-bottom: none; }
+  tbody tr { transition: background 0.2s ease; }
+  tbody tr:hover { background: var(--hover-bg); }
+  .empty-cell { text-align: center; color: var(--text-tertiary); padding: 40px 16px; }
+  .muted { color: var(--text-tertiary); }
+
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    padding: 3px 10px;
+    border-radius: 980px;
+    background: var(--input-bg);
+  }
+  .badge .dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+  .dot.ok { background: var(--success); }
+  .dot.warn { background: var(--warning); }
+  .dot.err { background: var(--danger); }
+  .dot.mut { background: var(--text-tertiary); }
+
+  .badge-status.ok { color: var(--success); background: rgba(52, 199, 89, 0.12); }
+  .badge-status.fail { color: var(--danger); background: var(--danger-soft); }
+  .mono { font-variant-numeric: tabular-nums; }
+
+  /* ===== 登录视图 ===== */
+  #viewLogin {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+  }
+  .login-card {
+    width: 100%;
+    max-width: 380px;
+    border-radius: 20px;
+    padding: 40px 36px;
+    box-shadow: var(--shadow);
+  }
+  .login-logo {
+    width: 52px;
+    height: 52px;
+    border-radius: 14px;
+    background: var(--accent);
+    color: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0 auto 20px;
+  }
+  .login-logo svg { width: 26px; height: 26px; }
+  .login-card h1 {
+    font-size: 20px;
+    font-weight: 600;
+    text-align: center;
+    margin-bottom: 4px;
+  }
+  .login-sub {
+    text-align: center;
+    color: var(--text-secondary);
+    font-size: 13px;
+    margin-bottom: 28px;
+  }
+  .login-error {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--danger);
+    font-size: 13px;
+    margin-bottom: 12px;
+  }
+  .login-error svg { width: 14px; height: 14px; flex-shrink: 0; }
+  .login-tip {
+    margin-top: 20px;
+    font-size: 12px;
+    color: var(--text-tertiary);
+    text-align: center;
+  }
+  .login-tip code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    background: var(--input-bg);
+    padding: 1px 6px;
+    border-radius: 6px;
+  }
+
+  /* ===== 主界面布局 ===== */
+  #viewMain { display: flex; min-height: 100vh; }
+  .sidebar {
+    width: 220px;
+    flex-shrink: 0;
+    height: 100vh;
+    position: sticky;
+    top: 0;
+    display: flex;
+    flex-direction: column;
+    border-right: 1px solid var(--sidebar-border);
+    padding: 20px 12px;
+  }
+  .sidebar-logo {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 6px 10px 22px;
+    font-size: 16px;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+  }
+  .sidebar-logo .logo-mark {
+    width: 28px;
+    height: 28px;
+    border-radius: 8px;
+    background: var(--accent);
+    color: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .sidebar-logo .logo-mark svg { width: 15px; height: 15px; }
+  .nav-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    padding: 9px 12px;
+    margin-bottom: 2px;
+    border: none;
+    border-radius: 10px;
+    background: transparent;
+    color: var(--text);
+    font-size: 14px;
+    font-family: inherit;
+    cursor: pointer;
+    transition: background 0.2s ease, color 0.2s ease;
+    text-align: left;
+  }
+  .nav-item svg { width: 17px; height: 17px; flex-shrink: 0; }
+  .nav-item:hover { background: var(--hover-bg); }
+  .nav-item.active { background: var(--active-bg); color: var(--active-text); font-weight: 500; }
+  .sidebar-footer {
+    margin-top: auto;
+    padding-top: 16px;
+    border-top: 1px solid var(--card-border);
+  }
+  .sidebar-version {
+    font-size: 12px;
+    color: var(--text-tertiary);
+    padding: 0 12px 10px;
+  }
+  .btn-logout {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 9px 12px;
+    border: none;
+    border-radius: 10px;
+    background: transparent;
+    color: var(--danger);
+    font-size: 14px;
+    font-family: inherit;
+    cursor: pointer;
+    transition: background 0.2s ease;
+  }
+  .btn-logout:hover { background: var(--danger-soft); }
+  .btn-logout svg { width: 17px; height: 17px; }
+
+  .content {
+    flex: 1;
+    min-width: 0;
+    height: 100vh;
+    overflow-y: auto;
+  }
+  .content-inner {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 32px 36px 64px;
+  }
+  .page-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 24px;
+  }
+  .page-header h2 { font-size: 24px; font-weight: 600; letter-spacing: -0.01em; }
+  .page-header .sub { color: var(--text-secondary); font-size: 13px; margin-top: 2px; }
+
+  /* 仪表盘 */
+  .stats-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 16px;
+    margin-bottom: 24px;
+  }
+  .stat-card {
+    border-radius: 14px;
+    padding: 20px;
+    box-shadow: var(--shadow);
+  }
+  .stat-card .stat-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 10px;
+  }
+  .stat-card .stat-label { font-size: 13px; color: var(--text-secondary); }
+  .stat-card .stat-icon {
+    width: 34px;
+    height: 34px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--input-bg);
+    color: var(--text-secondary);
+  }
+  .stat-card .stat-icon svg { width: 17px; height: 17px; }
+  .stat-card .stat-icon.green { color: var(--success); background: rgba(52, 199, 89, 0.12); }
+  .stat-card .stat-icon.orange { color: var(--warning); background: rgba(255, 149, 0, 0.12); }
+  .stat-card .stat-value { font-size: 28px; font-weight: 700; letter-spacing: -0.02em; }
+  .table-title {
+    font-size: 15px;
+    font-weight: 600;
+    padding: 16px 16px 0;
+  }
+  .table-scroll { overflow-x: auto; }
+
+  /* 账号管理 */
+  .toolbar {
+    display: flex;
+    justify-content: flex-end;
+    margin-bottom: 16px;
+  }
+  .cell-email {
+    color: var(--accent);
+    cursor: pointer;
+    text-decoration: none;
+    border-bottom: 1px dashed transparent;
+    transition: border-color 0.2s ease;
+  }
+  .cell-email:hover { border-bottom-color: var(--accent); }
+  .cell-email-input {
+    width: 220px;
+    max-width: 100%;
+    padding: 5px 8px;
+    font-size: 13px;
+    font-family: inherit;
+    color: var(--text);
+    background: var(--input-bg);
+    border: 1px solid var(--accent);
+    border-radius: 8px;
+    outline: none;
+  }
+  .cell-actions { display: flex; gap: 4px; }
+
+  /* 关于页 */
+  .about-grid { display: grid; gap: 16px; }
+  .about-card {
+    border-radius: 14px;
+    padding: 24px;
+    box-shadow: var(--shadow);
+  }
+  .about-card h3 { font-size: 16px; font-weight: 600; margin-bottom: 8px; }
+  .about-card p { color: var(--text-secondary); font-size: 13px; }
+  .config-list { display: grid; grid-template-columns: 120px 1fr; row-gap: 12px; font-size: 13px; }
+  .config-list dt { color: var(--text-secondary); }
+  .config-list dd { color: var(--text); font-variant-numeric: tabular-nums; }
+
+  /* 模态框 */
+  .modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: var(--overlay);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    z-index: 100;
+  }
+  .modal-card {
+    width: 100%;
+    max-width: 440px;
+    border-radius: 14px;
+    padding: 28px;
+    box-shadow: var(--shadow);
+  }
+  .modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 20px;
+  }
+  .modal-header h3 { font-size: 17px; font-weight: 600; }
+  .modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    margin-top: 8px;
+  }
+
+  /* Toast */
+  #toast {
+    position: fixed;
+    bottom: 32px;
+    left: 50%;
+    transform: translateX(-50%) translateY(20px);
+    padding: 10px 20px;
+    border-radius: 980px;
+    font-size: 13px;
+    color: var(--text);
+    background: var(--card-bg);
+    backdrop-filter: blur(20px) saturate(180%);
+    -webkit-backdrop-filter: blur(20px) saturate(180%);
+    border: 1px solid var(--card-border);
+    box-shadow: var(--shadow);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s ease, transform 0.2s ease;
+    z-index: 200;
+  }
+  #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+  #toast.error { color: var(--danger); }
+
+  @media (max-width: 860px) {
+    .sidebar { width: 64px; padding: 20px 8px; }
+    .sidebar-logo span.nav-label, .nav-item .nav-label, .btn-logout .nav-label { display: none; }
+    .sidebar-version { display: none; }
+    .stats-grid { grid-template-columns: repeat(2, 1fr); }
+    .content-inner { padding: 24px 16px 64px; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ================= 登录视图 ================= -->
+<div id="viewLogin">
+  <div class="login-card glass">
+    <div class="login-logo"><i data-lucide="zap"></i></div>
+    <h1>Genspark2API</h1>
+    <p class="login-sub">管理后台</p>
+    <div id="loginError" class="login-error" hidden>
+      <i data-lucide="alert-circle"></i><span id="loginErrorText">密码错误，请重试</span>
+    </div>
+    <form id="loginForm">
+      <div class="form-group">
+        <label for="loginPassword">管理员密码</label>
+        <input type="password" id="loginPassword" placeholder="请输入密码" autocomplete="current-password" required>
+      </div>
+      <button type="submit" class="btn btn-primary btn-block">登 录</button>
+    </form>
+    <p class="login-tip">默认密码 <code>admin123</code>，首次登录后请立即修改</p>
+  </div>
+</div>
+
+<!-- ================= 主界面 ================= -->
+<div id="viewMain" hidden>
+  <aside class="sidebar glass">
+    <div class="sidebar-logo">
+      <div class="logo-mark"><i data-lucide="zap"></i></div>
+      <span class="nav-label">Genspark2API</span>
+    </div>
+    <nav id="navMenu">
+      <button class="nav-item active" data-page="dashboard">
+        <i data-lucide="layout-dashboard"></i><span class="nav-label">仪表盘</span>
+      </button>
+      <button class="nav-item" data-page="accounts">
+        <i data-lucide="users"></i><span class="nav-label">账号管理</span>
+      </button>
+      <button class="nav-item" data-page="about">
+        <i data-lucide="info"></i><span class="nav-label">关于</span>
+      </button>
+    </nav>
+    <div class="sidebar-footer">
+      <div class="sidebar-version">版本 v1.0.0</div>
+      <button id="btnLogout" class="btn-logout">
+        <i data-lucide="log-out"></i><span class="nav-label">退出登录</span>
+      </button>
+    </div>
+  </aside>
+
+  <main class="content">
+    <div class="content-inner">
+
+      <!-- 仪表盘页 -->
+      <section id="page-dashboard" class="page">
+        <div class="page-header">
+          <div>
+            <h2>仪表盘</h2>
+            <p class="sub">系统运行状态总览</p>
+          </div>
+          <button class="btn btn-ghost" onclick="loadDashboard()">
+            <i data-lucide="refresh-cw" style="width:14px;height:14px"></i>刷新
+          </button>
+        </div>
+        <div class="stats-grid">
+          <div class="stat-card glass">
+            <div class="stat-top">
+              <span class="stat-label">总账号数</span>
+              <div class="stat-icon"><i data-lucide="users"></i></div>
+            </div>
+            <div class="stat-value mono" id="statTotal">-</div>
+          </div>
+          <div class="stat-card glass">
+            <div class="stat-top">
+              <span class="stat-label">可用账号</span>
+              <div class="stat-icon green"><i data-lucide="check-circle"></i></div>
+            </div>
+            <div class="stat-value mono" id="statReady">-</div>
+          </div>
+          <div class="stat-card glass">
+            <div class="stat-top">
+              <span class="stat-label">冷却中</span>
+              <div class="stat-icon orange"><i data-lucide="clock"></i></div>
+            </div>
+            <div class="stat-value mono" id="statCooldown">-</div>
+          </div>
+          <div class="stat-card glass">
+            <div class="stat-top">
+              <span class="stat-label">总请求数</span>
+              <div class="stat-icon"><i data-lucide="activity"></i></div>
+            </div>
+            <div class="stat-value mono" id="statRequests">-</div>
+          </div>
+        </div>
+        <div class="table-card glass">
+          <div class="table-title">最近请求记录</div>
+          <div class="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>时间</th>
+                  <th>账号</th>
+                  <th>模型</th>
+                  <th>状态</th>
+                  <th>耗时</th>
+                </tr>
+              </thead>
+              <tbody id="recentBody">
+                <tr><td colspan="5" class="empty-cell">加载中…</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- 账号管理页 -->
+      <section id="page-accounts" class="page" hidden>
+        <div class="page-header">
+          <div>
+            <h2>账号管理</h2>
+            <p class="sub">管理 Genspark 上游账号</p>
+          </div>
+        </div>
+        <div class="toolbar">
+          <button class="btn btn-primary" onclick="openAddModal()">
+            <i data-lucide="plus" style="width:14px;height:14px"></i>添加账号
+          </button>
+        </div>
+        <div class="table-card glass">
+          <div class="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>序号</th>
+                  <th>邮箱</th>
+                  <th>状态</th>
+                  <th>冷却剩余</th>
+                  <th>成功 / 失败 / 限流</th>
+                  <th>操作</th>
+                </tr>
+              </thead>
+              <tbody id="accountsBody">
+                <tr><td colspan="6" class="empty-cell">加载中…</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- 关于页 -->
+      <section id="page-about" class="page" hidden>
+        <div class="page-header">
+          <div>
+            <h2>关于</h2>
+            <p class="sub">项目信息与运行配置</p>
+          </div>
+        </div>
+        <div class="about-grid">
+          <div class="about-card glass">
+            <h3>Genspark2API</h3>
+            <p>将 Genspark AI 服务封装为 OpenAI 兼容接口的中转服务，支持多账号轮换、限流冷却与代理配置。</p>
+            <p style="margin-top:12px">版本 v1.0.0</p>
+          </div>
+          <div class="about-card glass">
+            <h3>当前配置</h3>
+            <dl class="config-list" style="margin-top:16px">
+              <dt>服务端口</dt><dd class="mono" id="cfgPort">-</dd>
+              <dt>模型数量</dt><dd class="mono" id="cfgModels">-</dd>
+              <dt>账号数量</dt><dd class="mono" id="cfgAccounts">-</dd>
+            </dl>
+          </div>
+        </div>
+      </section>
+
+    </div>
+  </main>
+</div>
+
+<!-- ================= 添加账号模态框 ================= -->
+<div id="modalOverlay" class="modal-overlay" hidden>
+  <div class="modal-card glass" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+    <div class="modal-header">
+      <h3 id="modalTitle">添加账号</h3>
+      <button class="btn-icon" onclick="closeAddModal()" title="关闭"><i data-lucide="x"></i></button>
+    </div>
+    <form id="addForm">
+      <div class="form-group">
+        <label for="addSeq">序号</label>
+        <input type="number" id="addSeq" min="1" step="1" placeholder="如：3" required>
+      </div>
+      <div class="form-group">
+        <label for="addEmail">邮箱</label>
+        <input type="email" id="addEmail" placeholder="user@example.com" required>
+      </div>
+      <div class="form-group">
+        <label for="addCookie">Cookie 文件路径</label>
+        <input type="text" id="addCookie" placeholder="cookies/user.json" required>
+      </div>
+      <div class="form-group">
+        <label for="addProxy">代理（可选）</label>
+        <input type="text" id="addProxy" placeholder="http://127.0.0.1:7890">
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-ghost" onclick="closeAddModal()">取消</button>
+        <button type="submit" class="btn btn-primary">添加</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+(function () {
+  'use strict';
+
+  var DEFAULT_PASSWORD = 'admin123';
+  var TOKEN_KEY = 'gs2api_admin_token';
+  var REFRESH_INTERVAL = 10000;
+
+  /* ---------- 状态 ---------- */
+  var accountsCache = [];
+  var modelsCache = [];
+  var modelsLoaded = false;
+  var refreshTimer = null;
+
+  /* ---------- 工具函数 ---------- */
+  function $(sel) { return document.querySelector(sel); }
+
+  function getToken() { return sessionStorage.getItem(TOKEN_KEY); }
+
+  function setSession(token, password) {
+    if (token) sessionStorage.setItem(TOKEN_KEY, token);
+    if (password) sessionStorage.setItem('gs2api_admin_password', password);
+  }
+
+  function clearSession() {
+    sessionStorage.removeItem(TOKEN_KEY);
+    sessionStorage.removeItem('gs2api_admin_password');
+  }
+
+  function escapeHtml(str) {
+    return String(str == null ? '' : str).replace(/[&<>"']/g, function (ch) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch];
+    });
+  }
+
+  function formatNum(n) {
+    return (typeof n === 'number' && isFinite(n)) ? n.toLocaleString('zh-CN') : '-';
+  }
+
+  function formatDuration(seconds) {
+    var s = Math.max(0, Math.floor(Number(seconds) || 0));
+    if (s === 0) return '-';
+    if (s < 60) return s + ' 秒';
+    if (s < 3600) return Math.floor(s / 60) + ' 分 ' + (s % 60) + ' 秒';
+    return Math.floor(s / 3600) + ' 时 ' + Math.floor((s % 3600) / 60) + ' 分';
+  }
+
+  function formatTime(value) {
+    var d = new Date(value);
+    if (isNaN(d.getTime())) return String(value || '-');
+    function pad(n) { return (n < 10 ? '0' : '') + n; }
+    return pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds());
+  }
+
+  function refreshIcons() {
+    if (window.lucide) window.lucide.createIcons();
+  }
+
+  var toastTimer = null;
+  function toast(message, type) {
+    var el = $('#toast');
+    el.textContent = message;
+    el.className = type === 'error' ? 'error show' : 'show';
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () { el.classList.remove('show'); }, 2400);
+  }
+
+  /* ---------- API ---------- */
+  async function api(path, options) {
+    var opts = Object.assign({ method: 'GET' }, options || {});
+    var headers = Object.assign({}, opts.headers || {});
+    var token = getToken();
+    if (token) headers['Authorization'] = 'Bearer ' + token;
+    if (opts.body !== undefined) {
+      headers['Content-Type'] = 'application/json';
+      opts.body = JSON.stringify(opts.body);
+    }
+    var res;
+    try {
+      res = await fetch(path, { method: opts.method, headers: headers, body: opts.body });
+    } catch (e) {
+      throw new Error('网络请求失败，请检查服务是否运行');
+    }
+    if (res.status === 401 || res.status === 403) {
+      handleUnauthorized();
+      throw new Error('登录已失效，请重新登录');
+    }
+    var data = null;
+    try { data = await res.json(); } catch (e) { /* 忽略非 JSON 响应 */ }
+    if (!res.ok) {
+      var detail = data && (data.detail || data.error || data.message);
+      throw new Error(typeof detail === 'string' ? detail : '请求失败（HTTP ' + res.status + '）');
+    }
+    return data || {};
+  }
+
+  /* ---------- 登录 ---------- */
+  async function handleLogin(e) {
+    e.preventDefault();
+    var password = $('#loginPassword').value.trim();
+    if (!password) return;
+    hideLoginError();
+    try {
+      var res = await api('/api/admin/login', { method: 'POST', body: { password: password } });
+      var token = res.token || ('local_' + password);
+      setSession(token, password);
+      enterApp();
+      }
+      showLoginError(err.message || '密码错误，请重试');
+    }
+  }
+
+  function showLoginError(msg) {
+    $('#loginErrorText').textContent = msg;
+    $('#loginError').hidden = false;
+    refreshIcons();
+  }
+
+  function hideLoginError() { $('#loginError').hidden = true; }
+
+  function handleUnauthorized() {
+    if (!$('#viewMain').hidden) toast('登录已失效，请重新登录', 'error');
+    logout();
+  }
+
+  function logout() {
+    stopAutoRefresh();
+    clearSession();
+    $('#viewMain').hidden = true;
+    $('#viewLogin').hidden = false;
+    $('#loginPassword').value = '';
+    setTimeout(function () { $('#loginPassword').focus(); }, 50);
+  }
+
+  function enterApp() {
+    $('#viewLogin').hidden = true;
+    $('#viewMain').hidden = false;
+    switchPage('dashboard');
+    refreshIcons();
+  }
+
+  /* ---------- 页面切换 ---------- */
+  function switchPage(page) {
+    var items = document.querySelectorAll('.nav-item');
+    for (var i = 0; i < items.length; i++) {
+      items[i].classList.toggle('active', items[i].dataset.page === page);
+    }
+    var pages = document.querySelectorAll('.page');
+    for (var j = 0; j < pages.length; j++) {
+      pages[j].hidden = pages[j].id !== 'page-' + page;
+    }
+    if (page === 'dashboard') { loadDashboard(); startAutoRefresh(); }
+    else { stopAutoRefresh(); }
+    if (page === 'accounts') loadAccounts();
+    if (page === 'about') loadAbout();
+    refreshIcons();
+  }
+
+  function startAutoRefresh() {
+    stopAutoRefresh();
+    refreshTimer = setInterval(loadDashboard, REFRESH_INTERVAL);
+  }
+
+  function stopAutoRefresh() {
+    if (refreshTimer) { clearInterval(refreshTimer); refreshTimer = null; }
+  }
+
+  /* ---------- 仪表盘 ---------- */
+  async function loadDashboard() {
+    try {
+      var data = await api('/api/admin/stats');
+      $('#statTotal').textContent = formatNum(data.total);
+      $('#statReady').textContent = formatNum(data.ready);
+      $('#statCooldown').textContent = formatNum(data.cooldown);
+      $('#statRequests').textContent = formatNum(data.total_requests);
+      renderRecent(data.recent_requests || data.requests || data.recent || []);
+    } catch (err) {
+      if (getToken()) toast('仪表盘数据加载失败：' + err.message, 'error');
+    }
+  }
+
+  function renderRecent(list) {
+    var tbody = $('#recentBody');
+    if (!list || !list.length) {
+      tbody.innerHTML = '<tr><td colspan="5" class="empty-cell">暂无请求记录</td></tr>';
+      return;
+    }
+    tbody.innerHTML = list.map(function (r) {
+      var ok = r.success !== undefined ? !!r.success
+        : (r.status === 'success' || r.status === 'ok' || r.status === 200);
+      var badge = ok
+        ? '<span class="badge badge-status ok"><span class="dot ok"></span>成功</span>'
+        : '<span class="badge badge-status fail"><span class="dot err"></span>失败</span>';
+      var latency = r.latency_ms !== undefined ? r.latency_ms + ' ms'
+        : (r.latency !== undefined ? r.latency + ' ms' : '-');
+      return '<tr>' +
+        '<td class="mono">' + escapeHtml(formatTime(r.time || r.timestamp)) + '</td>' +
+        '<td>' + escapeHtml(r.account || r.email || '-') + '</td>' +
+        '<td>' + escapeHtml(r.model || '-') + '</td>' +
+        '<td>' + badge + '</td>' +
+        '<td class="mono">' + escapeHtml(latency) + '</td>' +
+      '</tr>';
+    }).join('');
+  }
+
+  /* ---------- 账号管理 ---------- */
+  async function loadAccounts() {
+    try {
+      var data = await api('/api/admin/accounts');
+      accountsCache = data.accounts || [];
+      renderAccounts();
+    } catch (err) {
+      $('#accountsBody').innerHTML =
+        '<tr><td colspan="6" class="empty-cell">加载失败：' + escapeHtml(err.message) + '</td></tr>';
+    }
+  }
+
+  function statusBadge(a) {
+    var left = Number(a.cooldown_left_s) || 0;
+    if (left > 0 || a.status === 'cooldown') {
+      return '<span class="badge"><span class="dot warn"></span>冷却中</span>';
+    }
+    if (a.status === 'unlogged' || a.status === 'unauthorized') {
+      return '<span class="badge"><span class="dot mut"></span>未登录</span>';
+    }
+    if (a.ready || a.status === 'ready') {
+      return '<span class="badge"><span class="dot ok"></span>就绪</span>';
+    }
+    return '<span class="badge"><span class="dot err"></span>失败</span>';
+  }
+
+  function renderAccounts() {
+    var tbody = $('#accountsBody');
+    if (!accountsCache.length) {
+      tbody.innerHTML = '<tr><td colspan="6" class="empty-cell">暂无账号，点击右上角「添加账号」开始配置</td></tr>';
+      return;
+    }
+    tbody.innerHTML = accountsCache.map(function (a) {
+      var stats = a.stats || {};
+      var left = Number(a.cooldown_left_s) || 0;
+      var inCooldown = left > 0;
+      return '<tr data-seq="' + escapeHtml(a.seq) + '">' +
+        '<td class="mono">' + escapeHtml(a.seq) + '</td>' +
+        '<td><span class="cell-email" title="点击编辑邮箱" onclick="startEditEmail(' + a.seq + ')">' +
+          escapeHtml(a.email || '-') + '</span></td>' +
+        '<td>' + statusBadge(a) + '</td>' +
+        '<td class="mono">' + escapeHtml(formatDuration(left)) + '</td>' +
+        '<td class="mono">' + formatNum(stats.ok) + ' / ' + formatNum(stats.fail) + ' / ' + formatNum(stats.throttle) + '</td>' +
+        '<td><div class="cell-actions">' +
+          '<button class="btn-icon" title="手动冷却 5 分钟" onclick="cooldownAccount(' + a.seq + ')"' + (inCooldown ? ' disabled' : '') + '>' +
+            '<i data-lucide="timer"></i></button>' +
+          '<button class="btn-icon" title="恢复（重置冷却）" onclick="resetAccount(' + a.seq + ')"' + (inCooldown ? '' : ' disabled') + '>' +
+            '<i data-lucide="rotate-ccw"></i></button>' +
+          '<button class="btn-icon danger" title="删除账号" onclick="deleteAccount(' + a.seq + ')">' +
+            '<i data-lucide="trash-2"></i></button>' +
+        '</div></td>' +
+      '</tr>';
+    }).join('');
+    refreshIcons();
+  }
+
+  /* 行内编辑邮箱 */
+  function startEditEmail(seq) {
+    var account = accountsCache.find(function (a) { return Number(a.seq) === Number(seq); });
+    if (!account) return;
+    var row = document.querySelector('tr[data-seq="' + seq + '"]');
+    if (!row) return;
+    var cell = row.cells[1];
+    cell.innerHTML = '<input class="cell-email-input" type="email" value="' + escapeHtml(account.email || '') + '">';
+    var input = cell.firstChild;
+    input.focus();
+    input.select();
+    var done = false;
+    function finish(commit) {
+      if (done) return;
+      done = true;
+      var value = input.value.trim();
+      if (commit && value && value !== account.email) {
+        saveEmail(seq, value);
+      } else {
+        renderAccounts();
+      }
+    }
+    input.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') { e.preventDefault(); finish(true); }
+      else if (e.key === 'Escape') { e.preventDefault(); finish(false); }
+    });
+    input.addEventListener('blur', function () { finish(true); });
+  }
+
+  async function saveEmail(seq, email) {
+    var account = accountsCache.find(function (a) { return Number(a.seq) === Number(seq); }) || {};
+    try {
+      await api('/api/admin/accounts', {
+        method: 'POST',
+        body: {
+          seq: Number(seq),
+          email: email,
+          cookie_file: account.cookie_file,
+          proxy: account.proxy || ''
+        }
+      });
+      toast('邮箱已更新');
+    } catch (err) {
+      toast('更新失败：' + err.message, 'error');
+    }
+    loadAccounts();
+  }
+
+  /* 账号操作 */
+  async function cooldownAccount(seq) {
+    try {
+      await api('/api/admin/accounts/' + seq + '/cooldown', { method: 'POST', body: { seconds: 300 } });
+      toast('已冷却账号 #' + seq + '（5 分钟）');
+      loadAccounts();
+    } catch (err) {
+      toast('操作失败：' + err.message, 'error');
+    }
+  }
+
+  async function resetAccount(seq) {
+    try {
+      await api('/api/admin/accounts/' + seq + '/reset', { method: 'POST' });
+      toast('账号 #' + seq + ' 已恢复');
+      loadAccounts();
+    } catch (err) {
+      toast('操作失败：' + err.message, 'error');
+    }
+  }
+
+  async function deleteAccount(seq) {
+    var account = accountsCache.find(function (a) { return Number(a.seq) === Number(seq); });
+    var name = account && account.email ? account.email : '#' + seq;
+    if (!confirm('确定要删除账号「' + name + '」吗？此操作不可恢复。')) return;
+    try {
+      await api('/api/admin/accounts/' + seq, { method: 'DELETE' });
+      toast('账号已删除');
+      loadAccounts();
+    } catch (err) {
+      toast('删除失败：' + err.message, 'error');
+    }
+  }
+
+  /* ---------- 添加账号模态框 ---------- */
+  function openAddModal() {
+    $('#modalOverlay').hidden = false;
+    var next = accountsCache.reduce(function (m, a) {
+      return Math.max(m, Number(a.seq) || 0);
+    }, 0) + 1;
+    $('#addSeq').value = next;
+    setTimeout(function () { $('#addEmail').focus(); }, 50);
+    refreshIcons();
+  }
+
+  function closeAddModal() {
+    $('#modalOverlay').hidden = true;
+    $('#addForm').reset();
+  }
+
+  async function handleAddAccount(e) {
+    e.preventDefault();
+    var seq = parseInt($('#addSeq').value, 10);
+    var email = $('#addEmail').value.trim();
+    var cookieFile = $('#addCookie').value.trim();
+    var proxy = $('#addProxy').value.trim();
+    if (!seq || seq < 1) { toast('序号必须是大于 0 的整数', 'error'); return; }
+    if (!email || !cookieFile) { toast('邮箱和 Cookie 文件路径不能为空', 'error'); return; }
+    try {
+      await api('/api/admin/accounts', {
+        method: 'POST',
+        body: { seq: seq, email: email, cookie_file: cookieFile, proxy: proxy }
+      });
+      closeAddModal();
+      toast('账号添加成功');
+      loadAccounts();
+    } catch (err) {
+      toast('添加失败：' + err.message, 'error');
+    }
+  }
+
+  /* ---------- 关于页 ---------- */
+  async function loadAbout() {
+    $('#cfgPort').textContent = location.port || (location.protocol === 'https:' ? '443' : '80');
+    try {
+      var stats = await api('/api/admin/stats');
+      $('#cfgAccounts').textContent = formatNum(stats.total);
+    } catch (err) {
+      $('#cfgAccounts').textContent = '-';
+    }
+    if (!modelsLoaded) {
+      modelsLoaded = true;
+      try {
+        var data = await api('/v1/models');
+        modelsCache = data.data || data.models || [];
+      } catch (err) {
+        modelsCache = [];
+      }
+    }
+    $('#cfgModels').textContent = modelsCache.length ? String(modelsCache.length) : '-';
+  }
+
+  /* ---------- 事件绑定 ---------- */
+  function bindEvents() {
+    $('#loginForm').addEventListener('submit', handleLogin);
+    $('#btnLogout').addEventListener('click', logout);
+    $('#navMenu').addEventListener('click', function (e) {
+      var btn = e.target.closest('.nav-item');
+      if (btn && btn.dataset.page) switchPage(btn.dataset.page);
+    });
+    $('#addForm').addEventListener('submit', handleAddAccount);
+    $('#modalOverlay').addEventListener('click', function (e) {
+      if (e.target === this) closeAddModal();
+    });
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape' && !$('#modalOverlay').hidden) closeAddModal();
+    });
+  }
+
+  /* ---------- 启动 ---------- */
+  function init() {
+    bindEvents();
+    if (getToken()) enterApp();
+    refreshIcons();
+  }
+
+  /* 暴露给内联事件处理器 */
+  window.loadDashboard = loadDashboard;
+  window.openAddModal = openAddModal;
+  window.closeAddModal = closeAddModal;
+  window.startEditEmail = startEditEmail;
+  window.cooldownAccount = cooldownAccount;
+  window.resetAccount = resetAccount;
+  window.deleteAccount = deleteAccount;
+
+  document.addEventListener('DOMContentLoaded', init);
+})();
+</script>
+</body>
+</html>
