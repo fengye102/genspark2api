@@ -131,7 +131,15 @@ class Account:
 
 def load_accounts():
     if not os.path.exists(MAP_FILE):
-        raise RuntimeError(f"缺少 {MAP_FILE}")
+        # 首次运行（如双击 exe）没有配置文件时，创建空配置而不是崩溃。
+        # 管理面板可以从零添加账号。
+        try:
+            with open(MAP_FILE, "w", encoding="utf-8") as f:
+                json.dump({"accounts": []}, f, indent=2, ensure_ascii=False)
+            print(f"[init] 未找到 {MAP_FILE}，已创建空配置；可在管理面板添加账号", flush=True)
+        except OSError as e:
+            print(f"[init] 无法创建 {MAP_FILE}: {e}（本次以空账号运行）", flush=True)
+        return []
     d = json.load(open(MAP_FILE, encoding="utf-8"))
     accts = []
     for a in d.get("accounts", []):
@@ -520,4 +528,10 @@ def admin_page():
 if __name__ == "__main__":
     import uvicorn
     print(f"[main] serving on :{PORT}", flush=True)
-    uvicorn.run(app, host="127.0.0.1", port=PORT, log_level="warning")
+    try:
+        uvicorn.run(app, host="127.0.0.1", port=PORT, log_level="warning")
+    except OSError as e:
+        # 常见：端口已被占用（已在运行的实例）。双击时给出可读提示再退出。
+        print(f"[fatal] 启动失败: {e}", flush=True)
+        print(f"[fatal] 端口 {PORT} 可能已被占用（是否已有实例在运行？）", flush=True)
+        sys.exit(1)
