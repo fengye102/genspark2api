@@ -1,0 +1,34 @@
+# ---- Credentials / account data (NEVER commit) ----
+accounts.json
+genspark-ipmap.json
+cookies*.json
+gs_cookies*.json
+gs_account*.json
+gs_export[0-9]*.py
+!gs_export_template.py
+.proceed
+
+# ---- Browser profile / runtime state ----
+profile/
+*/profile/
+out/
+gs_cmd.txt
+gs_reg*.log
+*.log
+
+# ---- Python ----
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+
+# ---- Editor / OS ----
+.vscode/
+.idea/
+*.swp
+*~
+.DS_Store
+Thumbs.db
+desktop.ini

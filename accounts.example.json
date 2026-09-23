@@ -1,0 +1,18 @@
+{
+  "channel": "genspark",
+  "note": "Account table for genspark2api. Copy to accounts.json and fill in your own values. Each account needs a cookie_file exported by gs_login.py.",
+  "proxy_default": "",
+  "accounts": [
+    {
+      "seq": 1,
+      "email": "you@example.com",
+      "password": "your-password",
+      "cogen_id": "00000000-0000-0000-0000-000000000000",
+      "credits": 100,
+      "cookie_file": "cookies1.json",
+      "proxy": "",
+      "status": "active",
+      "note": "exported by gs_login.py"
+    }
+  ]
+}
