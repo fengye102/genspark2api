@@ -706,13 +706,19 @@
         <input type="email" id="addEmail" placeholder="user@example.com" required>
       </div>
       <div class="form-group">
-        <label for="addCookie">Cookie 文件路径</label>
-        <div style="display:flex;gap:8px;align-items:center">
-          <input type="text" id="addCookie" placeholder="cookies/user.json" required style="flex:1">
-          <button type="button" class="btn btn-ghost" id="btnFetchCookie" onclick="startFetchCookie()" style="white-space:nowrap">
-            <i data-lucide="globe" style="width:14px;height:14px"></i>浏览器获取
+        <label for="addCookie">Cookie</label>
+        <div style="display:flex;gap:8px;margin-bottom:8px">
+          <button type="button" class="btn btn-ghost" id="btnFetchCookie" onclick="openGensparkLogin()" style="white-space:nowrap">
+            <i data-lucide="globe" style="width:14px;height:14px"></i>打开 Genspark 登录页
+          </button>
+          <button type="button" class="btn btn-ghost" onclick="pasteCookie()" style="white-space:nowrap">
+            <i data-lucide="clipboard" style="width:14px;height:14px"></i>从剪贴板粘贴
           </button>
         </div>
+        <div id="fetchSnippetRow" hidden style="margin-bottom:8px">
+          <textarea id="fetchSnippet" readonly rows="3" style="width:100%;font-size:11px;font-family:monospace" onclick="this.select()"></textarea>
+        </div>
+        <textarea id="addCookie" rows="3" placeholder="登录后回到此页，Cookie 将自动填入；或手动粘贴 Cookie 字符串" required style="width:100%;resize:vertical;font-family:monospace;font-size:12px"></textarea>
         <div id="fetchStatus" class="fetch-status" hidden></div>
       </div>
       <div class="form-group">
@@ -1087,26 +1093,12 @@
   function closeAddModal() {
     $('#modalOverlay').hidden = true;
     $('#addForm').reset();
-    stopFetchPoll();
     $('#fetchStatus').hidden = true;
     $('#fetchStatus').className = 'fetch-status';
   }
 
-  /* ---------- 浏览器获取 Cookie ---------- */
-  var _fetchPollTimer = null;
-
-  function startFetchCookie() {
-    var proxy = $('#addProxy').value.trim();
-    var btn = $('#btnFetchCookie');
-    btn.disabled = true;
-    showFetchStatus('正在启动浏览器…', '');
-    api('/api/admin/fetch-cookie', { method: 'POST', body: { proxy: proxy } })
-      .then(function () { pollFetchStatus(); })
-      .catch(function (err) {
-        showFetchStatus(err.message || '启动失败', 'error');
-        btn.disabled = false;
-      });
-  }
+  /* ---------- 浏览器获取 Cookie（新标签页方案） ---------- */
+  var _gsTab = null;
 
   function showFetchStatus(msg, cls) {
     var el = $('#fetchStatus');
@@ -1115,30 +1107,37 @@
     el.className = 'fetch-status' + (cls ? ' ' + cls : '');
   }
 
-  function pollFetchStatus() {
-    stopFetchPoll();
-    _fetchPollTimer = setInterval(function () {
-      api('/api/admin/fetch-cookie/status')
-        .then(function (s) {
-          if (s.status === 'launching' || s.status === 'waiting' || s.status === 'extracting') {
-            showFetchStatus(s.msg, '');
-          } else if (s.status === 'done') {
-            stopFetchPoll();
-            showFetchStatus(s.msg, 'done');
-            if (s.cookie_file) $('#addCookie').value = s.cookie_file;
-            $('#btnFetchCookie').disabled = false;
-          } else if (s.status === 'error') {
-            stopFetchPoll();
-            showFetchStatus(s.msg, 'error');
-            $('#btnFetchCookie').disabled = false;
-          }
-        })
-        .catch(function () { /* 网络抖动，继续轮询 */ });
-    }, 2000);
+  function openGensparkLogin() {
+    window.open('https://www.genspark.ai/agents?type=ai_chat', '_blank');
+    showFetchStatus(
+      '已在新标签页打开 Genspark。登录后，在 Genspark 页面地址栏粘贴下方代码并回车：',
+      ''
+    );
+    var token = getToken();
+    var origin = location.origin;
+    var snippet = "javascript:(function(){" +
+      "var cookies=document.cookie.split(';').map(function(c){var p=c.trim().split('=');return {name:p[0],value:p.slice(1).join('='),domain:'.genspark.ai',path:'/'}});" +
+      "fetch('" + origin + "/api/admin/import-cookie',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer " + token + "'},body:JSON.stringify({cookies:cookies})}).then(r=>r.json()).then(r=>{" +
+      "if(r.ok){alert('Cookie 导入成功！')}else{alert('导入失败：'+(r.detail||''))}" +
+      "}).catch(function(e){alert('请求失败：'+e.message)});" +
+      "})()";
+    $('#fetchSnippet').value = snippet;
+    $('#fetchSnippetRow').hidden = false;
   }
 
-  function stopFetchPoll() {
-    if (_fetchPollTimer) { clearInterval(_fetchPollTimer); _fetchPollTimer = null; }
+  async function pasteCookie() {
+    try {
+      var text = await navigator.clipboard.readText();
+      if (text && text.trim()) {
+        $('#addCookie').value = text.trim();
+        showFetchStatus('已从剪贴板读取 Cookie', 'done');
+      } else {
+        showFetchStatus('剪贴板为空', 'error');
+      }
+    } catch (e) {
+      showFetchStatus('无法读取剪贴板，请手动粘贴到下方文本框', 'error');
+      $('#addCookie').focus();
+    }
   }
 
   async function handleAddAccount(e) {

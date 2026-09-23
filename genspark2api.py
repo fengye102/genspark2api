@@ -86,7 +86,9 @@ class Account:
 
     def load(self):
         if not self.cookie_file or not os.path.exists(self.cookie_file):
-            self.cookie = ""
+            # 没有文件时保留已有 cookie（可能是直接赋值/导入的）
+            if not self.cookie:
+                self.cookie = ""
             return
         d = json.load(open(self.cookie_file, encoding="utf-8"))
         self.cookie = "; ".join(f"{c['name']}={c['value']}"
@@ -408,15 +410,12 @@ class AccountCreateBody(BaseModel):
     seq: int
     email: str = ""
     cookie_file: str = ""
+    cookie: str = ""
     proxy: str = ""
 
 
 class CooldownBody(BaseModel):
     seconds: int = Field(ge=0)
-
-
-class FetchCookieBody(BaseModel):
-    proxy: str = ""
 
 
 def account_view(a):
@@ -471,7 +470,25 @@ def admin_list_accounts(_: str = Depends(verify_admin)):
 def admin_add_account(body: AccountCreateBody, _: str = Depends(verify_admin)):
     if find_account(body.seq) is not None:
         raise HTTPException(status_code=409, detail=f"seq {body.seq} 已存在")
-    acc = Account(body.model_dump())
+    d = body.model_dump()
+    raw_cookie = d.pop("cookie", "")
+    acc = Account(d)
+    if raw_cookie:
+        # 直接传入 cookie 字符串：写成文件，同时赋值给运行中的账号
+        n = 1
+        while os.path.exists(os.path.join(BASE, f"cookies{n}.json")):
+            n += 1
+        fname = f"cookies{n}.json"
+        fpath = os.path.join(BASE, fname)
+        pairs = [{"name": p.split("=", 1)[0].strip(), "value": p.split("=", 1)[1].strip(),
+                  "domain": ".genspark.ai", "path": "/"}
+                 for p in raw_cookie.split(";") if "=" in p]
+        with open(fpath, "w", encoding="utf-8") as f:
+            json.dump({"exported_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+                       "source": "admin_panel_paste", "cookies": pairs},
+                      f, ensure_ascii=False, indent=2)
+        acc.cookie_file = fname
+        acc.cookie = raw_cookie
     with LOCK:
         ACCOUNTS.append(acc)
         save_accounts()
@@ -509,111 +526,42 @@ def admin_reset_account(seq: int, _: str = Depends(verify_admin)):
     return account_view(acc)
 
 
-# ---------- 浏览器获取 Cookie ----------
-_fetch_state = {"status": "idle", "msg": "", "cookie_file": ""}
+# ---------- 浏览器获取 Cookie（轻量版：新标签页 + fetch 回传） ----------
+
+class CookieImportBody(BaseModel):
+    cookies: list = []
+    email: str = ""
 
 
-def _run_cookie_fetch(proxy: str):
-    """后台线程：打开浏览器让用户登录 Genspark，检测登录态后导出 cookie。"""
-    _fetch_state.update(status="launching", msg="正在启动浏览器…", cookie_file="")
-    br = None
-    try:
-        import cloakbrowser
-        profile_dir = os.path.join(BASE, "gs_login_profile")
-        os.makedirs(profile_dir, exist_ok=True)
-        br = cloakbrowser.launch_persistent_context(
-            user_data_dir=profile_dir, headless=False, stealth_args=True,
-            proxy=proxy or None,
-            viewport={"width": 1440, "height": 900})
-        pg = br.pages[0] if br.pages else br.new_page()
-        pg.goto("https://www.genspark.ai/agents?type=ai_chat",
-                wait_until="domcontentloaded", timeout=60000)
-        _fetch_state.update(status="waiting",
-                            msg="浏览器已打开，请在窗口中登录 Genspark 账号…")
-
-        # 轮询登录态，最长 10 分钟
-        deadline = time.time() + 600
-        logged_in = False
-        while time.time() < deadline:
-            try:
-                r = pg.evaluate("""async () => {
-                  try {
-                    const r = await fetch('/api/is_login', {credentials:'include'});
-                    const j = await r.json();
-                    return !!(j.data && j.data.is_login);
-                  } catch(e) { return false; }
-                }""")
-                if r:
-                    logged_in = True
-                    break
-            except Exception:
-                pass
-            time.sleep(3)
-
-        if not logged_in:
-            _fetch_state.update(status="error", msg="等待登录超时（10分钟），请重试")
-            return
-
-        _fetch_state.update(status="extracting", msg="已检测到登录，正在提取 Cookie…")
-        cookies = br.cookies()
-        cookie_data = {
-            "exported_at": time.strftime("%Y-%m-%d %H:%M:%S"),
-            "source": "admin_panel_browser_fetch",
-            "user_agent": pg.evaluate("() => navigator.userAgent"),
-            "cookies": [
-                {"name": c.get("name"), "value": c.get("value"),
-                 "domain": c.get("domain"), "path": c.get("path"),
-                 "httpOnly": c.get("httpOnly"), "secure": c.get("secure"),
-                 "sameSite": c.get("sameSite")}
-                for c in cookies
-            ],
-        }
-
-        # 找一个不冲突的文件名
-        n = 1
-        while os.path.exists(os.path.join(BASE, f"cookies{n}.json")):
-            n += 1
-        fname = f"cookies{n}.json"
-        fpath = os.path.join(BASE, fname)
-        with open(fpath, "w", encoding="utf-8") as f:
-            json.dump(cookie_data, f, ensure_ascii=False, indent=2)
-
-        # 检查关键 cookie
-        names = {c["name"] for c in cookie_data["cookies"]}
-        if "session_id" not in names:
-            _fetch_state.update(status="error",
-                                msg="提取完成但缺少 session_id，可能未真正登录")
-            return
-
-        _fetch_state.update(status="done",
-                            msg=f"Cookie 已保存到 {fname}（{len(cookies)} 个）",
-                            cookie_file=fname)
-
-    except ImportError:
-        _fetch_state.update(status="error",
-                            msg="cloakbrowser 未安装，无法使用浏览器获取")
-    except Exception as e:
-        _fetch_state.update(status="error", msg=f"获取失败: {e}")
-    finally:
-        if br:
-            try:
-                br.close()
-            except Exception:
-                pass
+@app.get("/api/admin/genspark-login-url")
+def admin_genspark_login_url(_: str = Depends(verify_admin)):
+    """返回 Genspark 登录页 URL，前端用 window.open 打开。"""
+    return {"url": "https://www.genspark.ai/agents?type=ai_chat"}
 
 
-@app.post("/api/admin/fetch-cookie")
-def admin_fetch_cookie(body: FetchCookieBody, _: str = Depends(verify_admin)):
-    if _fetch_state["status"] in ("launching", "waiting", "extracting"):
-        raise HTTPException(status_code=409, detail="已有获取任务进行中")
-    t = threading.Thread(target=_run_cookie_fetch, args=(body.proxy,), daemon=True)
-    t.start()
-    return {"ok": True, "msg": "浏览器获取任务已启动"}
-
-
-@app.get("/api/admin/fetch-cookie/status")
-def admin_fetch_cookie_status(_: str = Depends(verify_admin)):
-    return dict(_fetch_state)
+@app.post("/api/admin/import-cookie")
+def admin_import_cookie(body: CookieImportBody, _: str = Depends(verify_admin)):
+    """接收浏览器端 POST 回来的 cookie 列表，保存为 cookiesN.json 文件。"""
+    if not body.cookies:
+        raise HTTPException(status_code=400, detail="cookie 列表为空")
+    # 检查关键 cookie
+    names = {c.get("name") for c in body.cookies if isinstance(c, dict)}
+    if "session_id" not in names:
+        raise HTTPException(status_code=400, detail="缺少 session_id，请确认已在 Genspark 登录")
+    # 找一个不冲突的文件名
+    n = 1
+    while os.path.exists(os.path.join(BASE, f"cookies{n}.json")):
+        n += 1
+    fname = f"cookies{n}.json"
+    fpath = os.path.join(BASE, fname)
+    cookie_data = {
+        "exported_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+        "source": "browser_tab_import",
+        "cookies": body.cookies,
+    }
+    with open(fpath, "w", encoding="utf-8") as f:
+        json.dump(cookie_data, f, ensure_ascii=False, indent=2)
+    return {"ok": True, "cookie_file": fname, "count": len(body.cookies)}
 
 
 # PyInstaller onefile 时 static/ 在临时解压目录里
