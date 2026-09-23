@@ -5,7 +5,6 @@ cookies*.json
 gs_cookies*.json
 gs_account*.json
 gs_export[0-9]*.py
-!gs_export_template.py
 .proceed
 
 # ---- Browser profile / runtime state ----

@@ -148,19 +148,23 @@ per-account rate limit binds earlier than the credit budget.
 
 ## Registration toolkit (optional)
 
-`gs_register.py` automates the signup flow end to end, including the image CAPTCHA.
+`signup_e2e.py` automates the whole signup pipeline, including the image CAPTCHA:
 
 ```bash
-export TWOCAPTCHA_KEY=<your-2captcha-key>     # optional: enables fully automatic signup
-python gs_register.py --email you@example.com --seq 1
+export TWOCAPTCHA_KEY=<your-2captcha-key>
+export UM_DIR=<dir containing your mail CLI>        # optional, for code retrieval
+python signup_e2e.py --email you@example.com --seq 1
 ```
 
 It will: configure and launch the browser driver, navigate to the form, fill the email,
 solve the image CAPTCHA, poll for the email verification code, submit it, fill the password
-twice, create the account, then export cookies and append the account to `accounts.json`.
+twice, create the account, export cookies, and append the account to `accounts.json`.
 
-**With `TWOCAPTCHA_KEY` set, no human interaction is required.** Without it, the driver
-falls back to the manual flow (write the CAPTCHA answer to a file).
+**With `TWOCAPTCHA_KEY` set, no human interaction is required.** Measured end to end:
+**~116 s per account, zero human steps.**
+
+Without a solver key the driver still exposes a manual path: capture the image with
+`capimg`, write the answer to a file, and continue.
 
 ### Automatic CAPTCHA solving
 
@@ -246,10 +250,10 @@ the per-account egress isolation design.
 ```
 genspark2api.py          # the proxy (multi-account round-robin, streaming)
 gs_login.py              # one-time login + cookie export
-gs_register.py           # end-to-end signup automation
-gs_reg_driver.py         # browser driver used by gs_register.py
+signup_e2e.py            # end-to-end signup: register -> solve CAPTCHA -> export -> pool
+gs_reg_driver.py         # browser driver used by signup_e2e.py
 two_captcha.py           # automatic CAPTCHA solving (optional)
-gs_export_template.py    # cookie export template
+gs_export.py             # cookie export from a browser profile
 accounts.example.json    # account-pool template (copy to accounts.json)
 docs/ARCHITECTURE.md     # gateway integration + egress isolation design
 DISCLAIMER.md            # full terms — read this
