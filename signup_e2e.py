@@ -103,16 +103,8 @@ def fetch_code(timeout=300, interval=8):
 
 
 # ---------------------------------------------------------------- 1. driver
-src = open(DRIVER, encoding="utf-8").read()
-src = re.sub(r'PROFILE\s*=\s*os\.environ\.get\("GS_PROFILE",[^\n]*',
-             f'PROFILE = os.environ.get("GS_PROFILE", r"{PROFILE}")', src)
-src = re.sub(r'LOG\s*=\s*os\.environ\.get\("GS_LOG",[^\n]*',
-             f'LOG     = os.environ.get("GS_LOG", r"{LOG}")', src)
-src = re.sub(r'OUT\s*=\s*os\.environ\.get\("GS_OUT",[^\n]*',
-             f'OUT     = os.environ.get("GS_OUT", r"{OUT}")', src)
-open(DRIVER, "w", encoding="utf-8").write(src)
-log(f"driver configured: seq={SEQ} email={EMAIL}")
-
+# The driver reads GS_PROFILE / GS_OUT / GS_LOG / GS_EMAIL from the
+# environment itself, so nothing needs rewriting on disk.
 if os.path.exists(CMDFILE):
     os.remove(CMDFILE)
 
@@ -121,6 +113,7 @@ DETACHED = 0x00000008 | 0x00000200
 env = {**os.environ, "https_proxy": "", "http_proxy": "",
        "GS_EMAIL": EMAIL,
        "GS_PROFILE": PROFILE, "GS_LOG": LOG, "GS_OUT": OUT}
+log(f"driver configured: seq={SEQ} email={EMAIL}")
 log("launching driver (a browser window will open)...")
 subprocess.Popen([PY, "gs_reg_driver.py", "open"], cwd=BASE,
                  creationflags=DETACHED,

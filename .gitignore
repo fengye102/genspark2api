@@ -9,8 +9,9 @@ gs_export[0-9]*.py
 
 # ---- Browser profile / runtime state ----
 profile/
-*/profile/
+profile_*/
 out/
+out_*/
 gs_cmd.txt
 gs_reg*.log
 *.log
