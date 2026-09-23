@@ -148,25 +148,45 @@ per-account rate limit binds earlier than the credit budget.
 
 ## Registration toolkit (optional)
 
-`gs_register.py` automates the signup flow end to end. The signup form is hosted on an
-external identity provider and includes an image CAPTCHA that must be solved by a human;
-everything else is automated.
+`gs_register.py` automates the signup flow end to end, including the image CAPTCHA.
 
 ```bash
+export TWOCAPTCHA_KEY=<your-2captcha-key>     # optional: enables fully automatic signup
 python gs_register.py --email you@example.com --seq 1
 ```
 
 It will: configure and launch the browser driver, navigate to the form, fill the email,
-poll for the email verification code, submit it, fill the password twice, create the
-account, then export cookies and append the account to `accounts.json`.
+solve the image CAPTCHA, poll for the email verification code, submit it, fill the password
+twice, create the account, then export cookies and append the account to `accounts.json`.
 
-**You only need to solve the image CAPTCHA and click "Send verification code".**
+**With `TWOCAPTCHA_KEY` set, no human interaction is required.** Without it, the driver
+falls back to the manual flow (write the CAPTCHA answer to a file).
+
+### Automatic CAPTCHA solving
+
+`two_captcha.py` submits the CAPTCHA to 2captcha and returns the answer. Measured on the
+live signup flow (2026-09-23):
+
+| Metric | Value |
+|---|---|
+| Success rate | 2/2 signups passed on the first image |
+| Solve time | 7–20 s |
+| Cost | ~$0.002 per solve |
+| Stability | 3/3 identical answers for the same image |
+
+**One implementation detail matters a lot:** read the image from `img.src` (a
+`data:image/jpeg;base64,...` URL). Do **not** screenshot the element by coordinates — the
+screenshot includes the surrounding background, and the solver then misreads the distorted
+glyphs. This single difference was the gap between a wrong answer and a passing one.
+
+The driver exposes an `autocap` command that does the whole loop: read image → solve →
+fill → submit → verify, retrying with a fresh image on failure.
 
 ### Notes
 
-- **The image CAPTCHA must be solved by a human.** Vision models refuse the request, and
-  when asked neutrally they misread the distorted glyphs (they confuse strokes with
-  characters). Do not expect automation here.
+- **Without a solver key, the image CAPTCHA needs a human.** Vision models refuse the
+  request outright, and when asked neutrally they misread the distorted glyphs (they
+  confuse strokes with characters).
 - **Email verification code retrieval:** if you use an MCP-based mail tool, beware that it
   may return a **cached** code. Poll the mailbox directly to get the newest one; a stale
   code produces `We are having trouble verifying your email address`.
@@ -228,6 +248,7 @@ genspark2api.py          # the proxy (multi-account round-robin, streaming)
 gs_login.py              # one-time login + cookie export
 gs_register.py           # end-to-end signup automation
 gs_reg_driver.py         # browser driver used by gs_register.py
+two_captcha.py           # automatic CAPTCHA solving (optional)
 gs_export_template.py    # cookie export template
 accounts.example.json    # account-pool template (copy to accounts.json)
 docs/ARCHITECTURE.md     # gateway integration + egress isolation design

@@ -1,6 +1,6 @@
 """Genspark 注册 - 有头逐步驱动 v4（frame 感知 + 浏览器常驻不关）
 关键修复: B2C 内容在 iframe 里 -> 所有查找/点击/填表遍历 page.frames
-命令: state | frames | capimg | caprefresh | captcha=<文本> | password | sendcode
+命令: state | frames | capimg | caprefresh | autocap | captcha=<文本> | password | sendcode
       | code=<码> | create | extract | click=<文本> | type=<sel>|<文本> | quit
 """
 import sys, os, time, json, re, traceback, random, secrets, string
@@ -369,6 +369,83 @@ def dump(page, tag):
     return st
 
 
+MAX_AUTOCAP_TRIES = 5
+AUTOCAP_STATE_JS = """() => {
+  const g = id => { const e = document.getElementById(id);
+    return e ? (e.innerText || e.textContent || '').trim().slice(0,220) : null; };
+  const codeEl = document.getElementById('emailVerificationCode');
+  return JSON.stringify({
+    err: g('emailVerificationControl_error_message'),
+    ok: g('emailVerificationControl_success_message'),
+    pageErr: g('pageLevelErrors'),
+    codeVisible: codeEl ? codeEl.getBoundingClientRect().height > 0 : null,
+    url: location.href.slice(0,120)
+  });
+}"""
+
+
+def act_autocap(page):
+    """Fully automatic CAPTCHA solve: read image -> 2captcha -> fill -> submit -> verify.
+    Retries with a fresh image on failure. Returns True on success.
+    Requires TWOCAPTCHA_KEY in the environment.
+    """
+    try:
+        import two_captcha
+    except ImportError:
+        log("[autocap] two_captcha.py not found")
+        return False
+
+    if not two_captcha.API_KEY:
+        log("[autocap] TWOCAPTCHA_KEY is not set")
+        return False
+
+    log(f"[autocap] 2captcha balance: {two_captcha.balance()}")
+
+    for attempt in range(1, MAX_AUTOCAP_TRIES + 1):
+        log(f"[autocap] --- attempt {attempt}/{MAX_AUTOCAP_TRIES} ---")
+        if attempt > 1:
+            act_caprefresh(page)
+            time.sleep(3)
+
+        ans, cid, info = two_captcha.solve_from_page(page, save_dir=OUT, log=log)
+        if not ans:
+            log(f"[autocap] solve failed: {info}")
+            continue
+        log(f"[autocap] answer={ans!r}  took={info:.0f}s  id={cid}")
+
+        if not fill_by_id(page, "#captchaControlChallengeCode", ans):
+            log("[autocap] could not fill the field")
+            continue
+        time.sleep(0.8)
+
+        click_text(page, r"Send verification code|发送验证码", timeout=8, label="sendcode")
+        time.sleep(6)
+
+        dump(page, f"autocap_{attempt}")
+        ok = False
+
+        # Success marker: the server returns
+        # "Verification code has been sent to your inbox..."
+        try:
+            j = json.loads(page.evaluate(AUTOCAP_STATE_JS))
+            ok = bool(j.get("ok")) or bool(j.get("codeVisible"))
+            err = j.get("err") or j.get("pageErr") or ""
+            log(f"[autocap] server: ok={j.get('ok')!r} err={err!r} "
+                f"codeVisible={j.get('codeVisible')}")
+        except Exception as e:
+            log(f"[autocap] state read failed: {type(e).__name__}")
+
+        if ok:
+            log(f"[autocap] PASSED with answer={ans!r}")
+            two_captcha.report(cid, True)
+            return True
+        log(f"[autocap] rejected (answer={ans!r})")
+        two_captcha.report(cid, False)
+
+    log(f"[autocap] all {MAX_AUTOCAP_TRIES} attempts failed")
+    return False
+
+
 def act_capimg(page):
     box = None
     for fr in all_frames(page):
@@ -420,6 +497,7 @@ HANDLERS = {
                                 time.sleep(6), dump(p, "goto_" + re.sub(r"\W+", "_", a)[-30:])),
     "api":        lambda p, a: act_api(p, a),
     "capimg":     lambda p, a: act_capimg(p),
+    "autocap":    lambda p, a: act_autocap(p),
     "caprefresh": lambda p, a: act_caprefresh(p),
     "captcha":    lambda p, a: (fill_by_id(p, "#captchaControlChallengeCode", a), dump(p, "captcha_filled")),
     "email":      lambda p, a: (fill_by_id(p, "#email", EMAIL), dump(p, "email_filled")),
