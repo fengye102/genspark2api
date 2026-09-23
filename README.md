@@ -209,6 +209,16 @@ Per-account `proxy` values are supported and recommended. Accounts sharing one e
 are more likely to be rate-limited or restricted together. The bridge attaches a separate
 HTTP session per account, so each account can use its own egress.
 
+See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the gateway integration pattern and
+the per-account egress isolation design.
+
+---
+
+## Documentation
+
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — gateway integration (config shape,
+  alias/priority semantics, verification ladder) and per-account egress isolation design
+
 ---
 
 ## Project layout
@@ -220,6 +230,7 @@ gs_register.py           # end-to-end signup automation
 gs_reg_driver.py         # browser driver used by gs_register.py
 gs_export_template.py    # cookie export template
 accounts.example.json    # account-pool template (copy to accounts.json)
+docs/ARCHITECTURE.md     # gateway integration + egress isolation design
 DISCLAIMER.md            # full terms — read this
 LICENSE                  # MIT
 ```

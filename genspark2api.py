@@ -26,7 +26,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 
 BASE = os.path.dirname(os.path.abspath(__file__))
 MAP_FILE = os.environ.get("GS_ACCOUNTS", os.path.join(BASE, "accounts.json"))
-PORT = 8899
+PORT = int(os.environ.get("GS_PORT", "8899"))
 
 UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
       "(KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36")
