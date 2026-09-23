@@ -91,6 +91,53 @@ curl http://127.0.0.1:8899/v1/chat/completions \
 
 ---
 
+## Web admin panel
+
+The bridge serves a browser-based admin panel (login, dashboard, account management)
+at the root URL:
+
+```
+http://127.0.0.1:8899/
+```
+
+Default password is `admin123`. Override it before exposing the port beyond localhost:
+
+```bash
+# PowerShell
+$env:GS_ADMIN_PASSWORD = "a-strong-password"
+
+# bash
+export GS_ADMIN_PASSWORD="a-strong-password"
+```
+
+From the panel you can:
+
+- view per-account stats (success / failure counters, cooldown state)
+- add an account (paste email + cookie JSON, optional proxy)
+- delete an account
+- force-cooldown an account or reset its counters
+
+Changes are written back to `accounts.json` atomically, so the panel and the request
+path always share one source of truth. Admin endpoints are protected by a bearer token
+obtained from `POST /api/admin/login` (24 h expiry, in-memory only).
+
+---
+
+## Standalone exe (Windows)
+
+The bridge bundles into a single-file exe with PyInstaller:
+
+```bash
+pip install pyinstaller
+python -m PyInstaller --onefile --console --name genspark2api ^
+  --add-data "accounts.example.json;." --add-data "static;static" genspark2api.py
+```
+
+Run `dist\genspark2api.exe` next to your `accounts.json` (and `cookies*.json` files);
+it listens on the same `127.0.0.1:8899` and serves the admin panel at `/`.
+
+---
+
 ## Supported models
 
 Tested 2026-09-23 — **50 of 53 reachable** on a free-tier account.
@@ -249,6 +296,7 @@ the per-account egress isolation design.
 
 ```
 genspark2api.py          # the proxy (multi-account round-robin, streaming)
+static/admin.html        # web admin panel (login, dashboard, account management)
 gs_login.py              # one-time login + cookie export
 signup_e2e.py            # end-to-end signup: register -> solve CAPTCHA -> export -> pool
 gs_reg_driver.py         # browser driver used by signup_e2e.py
