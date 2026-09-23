@@ -464,6 +464,22 @@
     margin-top: 8px;
   }
 
+  /* Cookie 获取状态 */
+  .fetch-status {
+    margin-top: 8px; padding: 10px 14px; border-radius: 8px;
+    font-size: 13px; line-height: 1.5;
+    background: rgba(0, 113, 227, 0.08); color: var(--primary, #0071e3);
+    border: 1px solid rgba(0, 113, 227, 0.15);
+  }
+  .fetch-status.error {
+    background: rgba(255, 59, 48, 0.08); color: var(--danger, #ff3b30);
+    border-color: rgba(255, 59, 48, 0.15);
+  }
+  .fetch-status.done {
+    background: rgba(52, 199, 89, 0.08); color: var(--success, #34c759);
+    border-color: rgba(52, 199, 89, 0.15);
+  }
+
   /* Toast */
   #toast {
     position: fixed;
@@ -492,6 +508,7 @@
     .sidebar-logo span.nav-label, .nav-item .nav-label, .btn-logout .nav-label { display: none; }
     .sidebar-version { display: none; }
     .stats-grid { grid-template-columns: repeat(2, 1fr); }
+  }
     .content-inner { padding: 24px 16px 64px; }
   }
 </style>
@@ -690,7 +707,13 @@
       </div>
       <div class="form-group">
         <label for="addCookie">Cookie 文件路径</label>
-        <input type="text" id="addCookie" placeholder="cookies/user.json" required>
+        <div style="display:flex;gap:8px;align-items:center">
+          <input type="text" id="addCookie" placeholder="cookies/user.json" required style="flex:1">
+          <button type="button" class="btn btn-ghost" id="btnFetchCookie" onclick="startFetchCookie()" style="white-space:nowrap">
+            <i data-lucide="globe" style="width:14px;height:14px"></i>浏览器获取
+          </button>
+        </div>
+        <div id="fetchStatus" class="fetch-status" hidden></div>
       </div>
       <div class="form-group">
         <label for="addProxy">代理（可选）</label>
@@ -1064,6 +1087,58 @@
   function closeAddModal() {
     $('#modalOverlay').hidden = true;
     $('#addForm').reset();
+    stopFetchPoll();
+    $('#fetchStatus').hidden = true;
+    $('#fetchStatus').className = 'fetch-status';
+  }
+
+  /* ---------- 浏览器获取 Cookie ---------- */
+  var _fetchPollTimer = null;
+
+  function startFetchCookie() {
+    var proxy = $('#addProxy').value.trim();
+    var btn = $('#btnFetchCookie');
+    btn.disabled = true;
+    showFetchStatus('正在启动浏览器…', '');
+    api('/api/admin/fetch-cookie', { method: 'POST', body: { proxy: proxy } })
+      .then(function () { pollFetchStatus(); })
+      .catch(function (err) {
+        showFetchStatus(err.message || '启动失败', 'error');
+        btn.disabled = false;
+      });
+  }
+
+  function showFetchStatus(msg, cls) {
+    var el = $('#fetchStatus');
+    el.textContent = msg;
+    el.hidden = false;
+    el.className = 'fetch-status' + (cls ? ' ' + cls : '');
+  }
+
+  function pollFetchStatus() {
+    stopFetchPoll();
+    _fetchPollTimer = setInterval(function () {
+      api('/api/admin/fetch-cookie/status')
+        .then(function (s) {
+          if (s.status === 'launching' || s.status === 'waiting' || s.status === 'extracting') {
+            showFetchStatus(s.msg, '');
+          } else if (s.status === 'done') {
+            stopFetchPoll();
+            showFetchStatus(s.msg, 'done');
+            if (s.cookie_file) $('#addCookie').value = s.cookie_file;
+            $('#btnFetchCookie').disabled = false;
+          } else if (s.status === 'error') {
+            stopFetchPoll();
+            showFetchStatus(s.msg, 'error');
+            $('#btnFetchCookie').disabled = false;
+          }
+        })
+        .catch(function () { /* 网络抖动，继续轮询 */ });
+    }, 2000);
+  }
+
+  function stopFetchPoll() {
+    if (_fetchPollTimer) { clearInterval(_fetchPollTimer); _fetchPollTimer = null; }
   }
 
   async function handleAddAccount(e) {
