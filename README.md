@@ -13,7 +13,7 @@ cookies; the proxy itself is pure HTTP.
 
 ```
 OpenAI-compatible client
-        │  POST /v1/chat/completions
+        │  POST /v1/chat/completions   (Authorization: Bearer <api-key>)
         ▼
 genspark2api.py  (127.0.0.1:8899)
         │  round-robin over the account pool
@@ -24,31 +24,47 @@ genspark2api.py  (127.0.0.1:8899)
 upstream web session endpoint  (SSE)
 ```
 
-**The browser is NOT in the request path.** A single login run (`gs_login.py`) exports the
-session cookies; after that the bridge talks HTTP directly.
+**The browser is NOT in the request path.** The browser is only used to export session
+cookies (from the admin panel's one-click flow, or `gs_login.py`); after that the bridge
+talks HTTP directly.
 
 ---
 
 ## Quick start
 
-### 1. Requirements
+### Option A — prebuilt exe (easiest)
+
+Download / build `dist\genspark2api.exe`, double-click it, then open
+`http://127.0.0.1:8899/`. Log in (default password `admin123`), go to
+**账号管理 → 添加账号 → 获取 Cookie（自动登录）** — a dedicated browser window opens, log
+into Genspark there, and the cookies are captured and written back automatically.
+
+Then go to **API 密钥** to get the key your clients must send (see below).
+
+### Option B — from source
+
+#### 1. Requirements
 
 ```bash
 pip install fastapi uvicorn curl_cffi cloakbrowser
 ```
 
-### 2. Export a session cookie
+#### 2. Add an account
 
-Log in through a dedicated browser profile (never your system Chrome profile):
+**Easiest: use the admin panel** (step 4 → open `http://127.0.0.1:8899/` → 账号管理 →
+添加账号 → 获取 Cookie). No manual cookie hunting.
+
+Or export from the command line through a dedicated browser profile (never your system
+Chrome profile):
 
 ```bash
 python gs_login.py            # opens a window; log in, then create a .proceed file
 python gs_login.py --auto     # or export immediately if already logged in
 ```
 
-This writes `cookies1.json` containing the session cookies.
+This writes `cookies1.json` containing the session cookies. Then register it in the pool:
 
-### 3. Configure the account pool
+#### 3. Configure the account pool (command-line path)
 
 ```bash
 cp accounts.example.json accounts.json
@@ -66,35 +82,38 @@ but recommended for per-account egress isolation.
 }
 ```
 
-### 4. Run
+#### 4. Run
 
 ```bash
 python genspark2api.py
 # serving on :8899
 ```
 
-### 5. Call it
+#### 5. Get an API key, then call it
+
+All `/v1/*` endpoints require an API key. One is auto-generated on first run; manage keys
+in the admin panel under **API 密钥** (or set `GS_API_KEY` before first run).
 
 ```bash
 curl http://127.0.0.1:8899/v1/chat/completions \
+  -H "Authorization: Bearer sk-your-api-key" \
   -H "Content-Type: application/json" \
   -d '{"model":"gpt-6-luna","messages":[{"role":"user","content":"hi"}]}'
 ```
 
 ### Endpoints
 
-| Endpoint | Description |
-|---|---|
-| `POST /v1/chat/completions` | OpenAI-compatible; supports `stream: true` |
-| `GET /v1/models` | Model list |
-| `GET /health` | Per-account status: `ready`, `cooldown_left_s`, success/failure counters |
+| Endpoint | Auth | Description |
+|---|---|---|
+| `POST /v1/chat/completions` | API key | OpenAI-compatible; supports `stream: true` |
+| `GET /v1/models` | API key | Model list |
+| `GET /health` | — | Per-account status: `ready`, `cooldown_left_s`, success/failure counters |
 
 ---
 
 ## Web admin panel
 
-The bridge serves a browser-based admin panel (login, dashboard, account management)
-at the root URL:
+The bridge serves a browser-based admin panel at the root URL:
 
 ```
 http://127.0.0.1:8899/
@@ -110,16 +129,33 @@ $env:GS_ADMIN_PASSWORD = "a-strong-password"
 export GS_ADMIN_PASSWORD="a-strong-password"
 ```
 
-From the panel you can:
+You can also change the password from the panel itself: **设置 → 修改管理员密码**.
+The new password is persisted to `config.json` and takes precedence over the default
+(the `GS_ADMIN_PASSWORD` env var, when set, still wins over `config.json`).
 
-- view per-account stats (success / failure counters, cooldown state)
-- add an account (paste email + cookie JSON, optional proxy)
-- delete an account
-- force-cooldown an account or reset its counters
+Pages:
 
-Changes are written back to `accounts.json` atomically, so the panel and the request
-path always share one source of truth. Admin endpoints are protected by a bearer token
-obtained from `POST /api/admin/login` (24 h expiry, in-memory only).
+- **仪表盘** — per-account stats (success / failure counters, cooldown state)
+- **账号管理** — add an account (one-click **获取 Cookie（自动登录）** opens a browser,
+  captures the session after you log in, and pre-fills the form; or paste a cookie string
+  manually), delete, force-cooldown, or reset an account
+- **API 密钥** — generate / delete API keys. A newly generated key is shown **once**;
+  copy it immediately. At least one key must exist.
+- **设置** — change the admin password
+
+### API keys
+
+Calls to `/v1/*` are authenticated with a Bearer API key:
+
+- Keys are `sk-…` strings, stored in `config.json` under `api_keys`.
+- One key is **auto-generated on first run**, so fresh installs work out of the box —
+  just open the API 密钥 page to see it (and generate your own).
+- Set the `GS_API_KEY` env var to pin a specific key (overrides `config.json`).
+- Generate additional keys for different clients; deleting a key revokes it immediately.
+
+Account changes are written back to `accounts.json` atomically, so the panel and the
+request path always share one source of truth. Admin endpoints are protected by a bearer
+token obtained from `POST /api/admin/login` (24 h expiry, in-memory only).
 
 ---
 
@@ -130,11 +166,36 @@ The bridge bundles into a single-file exe with PyInstaller:
 ```bash
 pip install pyinstaller
 python -m PyInstaller --onefile --console --name genspark2api ^
-  --add-data "accounts.example.json;." --add-data "static;static" genspark2api.py
+  --add-data "accounts.example.json;." --add-data "static;static" ^
+  --hidden-import cloakbrowser --hidden-import playwright ^
+  --collect-all cloakbrowser --collect-all playwright genspark2api.py
 ```
 
-Run `dist\genspark2api.exe` next to your `accounts.json` (and `cookies*.json` files);
-it listens on the same `127.0.0.1:8899` and serves the admin panel at `/`.
+The cloakbrowser/playwright flags are required so the panel's **获取 Cookie（自动登录）**
+button works inside the exe.
+
+Run `dist\genspark2api.exe` next to your `accounts.json` (and `cookies*.json` files).
+Runtime state lives next to the exe: `accounts.json`, `cookies*.json`, `config.json`
+(admin password + API keys), and the `gs_login_profile/` browser profile. It listens on
+`127.0.0.1:8899` and serves the admin panel at `/`.
+
+---
+
+## Configuration reference
+
+All settings are optional; defaults work for local use.
+
+| Source | Name | Purpose |
+|---|---|---|
+| env | `GS_PORT` | Listen port (default `8899`) |
+| env | `GS_ACCOUNTS` | Path to the account-pool JSON (default `./accounts.json`) |
+| env | `GS_PROXY` | Fallback egress proxy for accounts without their own `proxy` |
+| env | `GS_ADMIN_PASSWORD` | Admin password (overrides `config.json`, default `admin123`) |
+| env | `GS_API_KEY` | Pin a single API key (overrides `config.json` `api_keys`) |
+| `config.json` | `admin_password` | Persisted admin password (set via 设置 → 修改管理员密码) |
+| `config.json` | `api_keys` | API keys for `/v1/*` (managed from the API 密钥 page) |
+
+`config.json` is created automatically on first run / first change.
 
 ---
 
@@ -296,13 +357,14 @@ the per-account egress isolation design.
 
 ```
 genspark2api.py          # the proxy (multi-account round-robin, streaming)
-static/admin.html        # web admin panel (login, dashboard, account management)
-gs_login.py              # one-time login + cookie export
+static/admin.html        # web admin panel (login, dashboard, accounts, API keys, settings)
+gs_login.py              # CLI one-time login + cookie export (panel has a one-click flow)
 signup_e2e.py            # end-to-end signup: register -> solve CAPTCHA -> export -> pool
 gs_reg_driver.py         # browser driver used by signup_e2e.py
 two_captcha.py           # automatic CAPTCHA solving (optional)
 gs_export.py             # cookie export from a browser profile
 accounts.example.json    # account-pool template (copy to accounts.json)
+config.json              # runtime state: admin password + API keys (auto-created)
 docs/ARCHITECTURE.md     # gateway integration + egress isolation design
 DISCLAIMER.md            # full terms — read this
 LICENSE                  # MIT
