@@ -1,17 +1,23 @@
-```
-OpenAI-compatible client
-        │  POST /v1/chat/completions   (Authorization: Bearer <api-key>)
-        ▼
-genspark2api.py  (127.0.0.1:8899)
-        │  round-robin over the account pool
-        ├─ account 1  cookie + optional egress proxy
-        ├─ account 2  cookie + optional egress proxy
-        └─ account N  ...
-        ▼
-upstream web session endpoint  (SSE)
-```
+# genspark2api
 
-**The browser is NOT in the request path.** The browser is only used to export session
+OpenAI-compatible API bridge for the Genspark web session — **single-file Windows executable**,
+stream support, and an automated registration toolkit.
+
+The bridge reuses a web session **you exported yourself**, so it works on the free tier
+where the official API key path is blocked. The browser is only used once, to export
+cookies; the proxy itself is pure HTTP.
+
+---
+
+## 🚀 Quick link
+
+[📥 Download v1.0.1 Windows exe](https://github.com/fengye102/genspark2api/releases/tag/v1.0.1)
+
+[中文快速指南](README_zh-CN.md) — 双击即用，一键获取 Cookie
+
+---
+
+## How it works
 cookies (from the admin panel's one-click flow, or `gs_login.py`); after that the bridge
 talks HTTP directly.
 
