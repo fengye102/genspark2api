@@ -34,6 +34,7 @@ dist_test/
 
 # ---- Local reference clones ----
 _ref_m365/
+_ref_cli2api/
 
 # ---- Temp scripts ----
 _check.py

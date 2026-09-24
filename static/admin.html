@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="color-scheme" content="light dark">
 <title>Genspark2API 管理后台</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%E2%9A%A1%3C/text%3E%3C/svg%3E">
 <script src="https://unpkg.com/lucide@latest"></script>
 <style>
   :root {
@@ -511,6 +512,108 @@
   }
     .content-inner { padding: 24px 16px 64px; }
   }
+
+  /* ---------- 图表 ---------- */
+  .chart-card {
+    border-radius: 14px;
+    padding: 18px 20px 12px;
+    box-shadow: var(--shadow);
+    margin-bottom: 20px;
+  }
+  .chart-head {
+    display: flex; align-items: baseline; justify-content: space-between;
+    margin-bottom: 10px;
+  }
+  .chart-title { font-size: 14px; font-weight: 600; }
+  .chart-legend { font-size: 12px; color: var(--text-secondary); display: flex; gap: 14px; }
+  .legend-dot { display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 4px; }
+  #trafficChart { width: 100%; height: 160px; display: block; }
+
+  /* ---------- 选项卡 ---------- */
+  .tabs { display: flex; gap: 4px; margin-bottom: 16px; border-bottom: 1px solid var(--card-border); }
+  .tab-btn {
+    padding: 8px 14px; font-size: 13px; font-family: inherit; font-weight: 500;
+    color: var(--text-secondary); background: none; border: none; cursor: pointer;
+    border-bottom: 2px solid transparent; margin-bottom: -1px;
+  }
+  .tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+  /* ---------- 开关 ---------- */
+  .switch { position: relative; display: inline-block; width: 36px; height: 20px; flex: none; }
+  .switch input { opacity: 0; width: 0; height: 0; }
+  .slider {
+    position: absolute; inset: 0; cursor: pointer; border-radius: 20px;
+    background: rgba(120, 120, 128, 0.32); transition: 0.2s;
+  }
+  .slider::before {
+    content: ""; position: absolute; width: 16px; height: 16px; border-radius: 50%;
+    left: 2px; top: 2px; background: #fff; transition: 0.2s;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.25);
+  }
+  .switch input:checked + .slider { background: var(--success); }
+  .switch input:checked + .slider::before { transform: translateX(16px); }
+
+  /* ---------- 筛选条 / 分页 ---------- */
+  .filter-bar { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 14px; }
+  .filter-bar select, .filter-bar input {
+    padding: 7px 10px; font-size: 13px; font-family: inherit; color: var(--text);
+    background: var(--input-bg); border: 1px solid var(--input-border);
+    border-radius: 8px; outline: none;
+  }
+  .filter-bar select:focus, .filter-bar input:focus { border-color: var(--accent); }
+  .pager { display: flex; align-items: center; gap: 10px; justify-content: flex-end; padding: 10px 16px; font-size: 12px; color: var(--text-secondary); }
+
+  /* ---------- KPI 小卡片 ---------- */
+  .kpi-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; margin-bottom: 16px; }
+  .kpi { border-radius: 12px; padding: 12px 14px; box-shadow: var(--shadow); }
+  .kpi-label { font-size: 12px; color: var(--text-secondary); margin-bottom: 4px; }
+  .kpi-value { font-size: 20px; font-weight: 600; }
+
+  /* ---------- 访问信息 ---------- */
+  .access-item {
+    display: flex; align-items: center; gap: 10px; padding: 10px 0;
+    border-bottom: 1px solid var(--card-border); font-size: 13px;
+  }
+  .access-item:last-child { border-bottom: none; }
+  .access-item .label { width: 150px; flex: none; color: var(--text-secondary); }
+  .access-item code {
+    flex: 1; word-break: break-all; font-size: 12px;
+    background: rgba(0,0,0,.06); padding: 5px 8px; border-radius: 6px;
+  }
+  @media (prefers-color-scheme: dark) {
+    .access-item code { background: rgba(255,255,255,.08); }
+  }
+
+  /* ---------- 模型测试 ---------- */
+  .test-grid { display: grid; grid-template-columns: 340px 1fr; gap: 16px; align-items: start; }
+  @media (max-width: 900px) { .test-grid { grid-template-columns: 1fr; } }
+  .resp-box {
+    white-space: pre-wrap; word-break: break-word; font-size: 13px; line-height: 1.7;
+    background: rgba(0,0,0,.05); border-radius: 10px; padding: 14px; min-height: 160px;
+    max-height: 480px; overflow-y: auto;
+  }
+  @media (prefers-color-scheme: dark) { .resp-box { background: rgba(255,255,255,.06); } }
+  .resp-meta { font-size: 12px; color: var(--text-secondary); margin-top: 10px; }
+  .form-group select, .form-group textarea {
+    width: 100%; padding: 9px 12px; font-size: 14px; font-family: inherit;
+    color: var(--text); background: var(--input-bg);
+    border: 1px solid var(--input-border); border-radius: 10px; outline: none;
+  }
+  .form-group select:focus, .form-group textarea:focus { border-color: var(--accent); }
+
+  /* ---------- 运行日志 ---------- */
+  .rt-list { font-size: 12px; max-height: 520px; overflow-y: auto; padding: 8px 0; }
+  .rt-item { display: flex; gap: 10px; padding: 5px 16px; border-bottom: 1px solid var(--card-border); }
+  .rt-time { color: var(--text-tertiary); flex: none; }
+  .rt-level { flex: none; width: 56px; font-weight: 600; }
+  .rt-level.error, .rt-level.fatal, .rt-level.critical { color: var(--danger); }
+  .rt-level.warning { color: var(--warning); }
+  .rt-msg { word-break: break-all; }
+
+  /* ---------- 错误文本 ---------- */
+  .err-text { font-size: 11px; color: var(--danger); max-width: 260px; word-break: break-all; }
+  .badge.throttle { background: rgba(255,149,0,.12); color: var(--warning); }
+  .badge.muted-badge { background: rgba(120,120,128,.16); color: var(--text-secondary); }
 </style>
 </head>
 <body>
@@ -552,6 +655,15 @@
       <button class="nav-item" data-page="keys">
         <i data-lucide="key-round"></i><span class="nav-label">API 密钥</span>
       </button>
+      <button class="nav-item" data-page="logs">
+        <i data-lucide="scroll-text"></i><span class="nav-label">日志</span>
+      </button>
+      <button class="nav-item" data-page="test">
+        <i data-lucide="flask-conical"></i><span class="nav-label">模型测试</span>
+      </button>
+      <button class="nav-item" data-page="access">
+        <i data-lucide="link"></i><span class="nav-label">访问信息</span>
+      </button>
       <button class="nav-item" data-page="settings">
         <i data-lucide="settings"></i><span class="nav-label">设置</span>
       </button>
@@ -560,7 +672,7 @@
       </button>
     </nav>
     <div class="sidebar-footer">
-      <div class="sidebar-version">版本 v1.0.0</div>
+      <div class="sidebar-version">版本 v1.1.0</div>
       <button id="btnLogout" class="btn-logout">
         <i data-lucide="log-out"></i><span class="nav-label">退出登录</span>
       </button>
@@ -610,6 +722,23 @@
             </div>
             <div class="stat-value mono" id="statRequests">-</div>
           </div>
+          <div class="stat-card glass">
+            <div class="stat-top">
+              <span class="stat-label">成功率</span>
+              <div class="stat-icon green"><i data-lucide="trending-up"></i></div>
+            </div>
+            <div class="stat-value mono" id="statSuccessRate">-</div>
+          </div>
+        </div>
+        <div class="chart-card glass">
+          <div class="chart-head">
+            <span class="chart-title">最近 24 小时请求量</span>
+            <span class="chart-legend">
+              <span><span class="legend-dot" style="background:var(--success)"></span>成功</span>
+              <span><span class="legend-dot" style="background:var(--danger)"></span>失败</span>
+            </span>
+          </div>
+          <canvas id="trafficChart"></canvas>
         </div>
         <div class="table-card glass">
           <div class="table-title">最近请求记录</div>
@@ -644,6 +773,13 @@
           <button class="btn btn-primary" onclick="openAddModal()">
             <i data-lucide="plus" style="width:14px;height:14px"></i>添加账号
           </button>
+          <button class="btn btn-ghost" onclick="exportAccounts()">
+            <i data-lucide="download" style="width:14px;height:14px"></i>导出
+          </button>
+          <button class="btn btn-ghost" onclick="importAccounts()">
+            <i data-lucide="upload" style="width:14px;height:14px"></i>导入
+          </button>
+          <input type="file" id="importFile" accept=".json" hidden>
         </div>
         <div class="table-card glass">
           <div class="table-scroll">
@@ -673,6 +809,10 @@
             <h2>API 密钥</h2>
             <p class="sub">调用 /v1 接口时用作 Authorization: Bearer 凭证</p>
           </div>
+        </div>
+        <div class="toolbar">
+          <input type="text" id="newKeyName" placeholder="密钥名称（如：我的 Cherry Studio）"
+                 style="padding:8px 12px;font-size:13px;font-family:inherit;color:var(--text);background:var(--input-bg);border:1px solid var(--input-border);border-radius:8px;outline:none;width:240px">
           <button class="btn btn-primary" onclick="createKey()">
             <i data-lucide="plus" style="width:14px;height:14px"></i>生成新密钥
           </button>
@@ -693,13 +833,16 @@
             <table>
               <thead>
                 <tr>
-                  <th>#</th>
+                  <th>名称</th>
                   <th>密钥（脱敏）</th>
+                  <th>启用</th>
+                  <th>创建时间</th>
+                  <th>最后使用</th>
                   <th>操作</th>
                 </tr>
               </thead>
               <tbody id="keysBody">
-                <tr><td colspan="3" class="empty-cell">加载中…</td></tr>
+                <tr><td colspan="6" class="empty-cell">加载中…</td></tr>
               </tbody>
             </table>
           </div>
@@ -714,15 +857,199 @@
         </div>
       </section>
 
+      <!-- 日志页 -->
+      <section id="page-logs" class="page" hidden>
+        <div class="page-header">
+          <div>
+            <h2>日志</h2>
+            <p class="sub">API 请求记录与服务运行日志</p>
+          </div>
+          <button class="btn btn-ghost" onclick="loadLogsPage()">
+            <i data-lucide="refresh-cw" style="width:14px;height:14px"></i>刷新
+          </button>
+        </div>
+        <div class="tabs">
+          <button class="tab-btn active" data-tab="requests" onclick="switchLogTab('requests')">请求日志</button>
+          <button class="tab-btn" data-tab="runtime" onclick="switchLogTab('runtime')">运行日志</button>
+        </div>
+
+        <div id="logTabRequests">
+          <div class="kpi-row">
+            <div class="kpi glass"><div class="kpi-label">24h 请求数</div><div class="kpi-value mono" id="kpiTotal">-</div></div>
+            <div class="kpi glass"><div class="kpi-label">成功率</div><div class="kpi-value mono" id="kpiRate">-</div></div>
+            <div class="kpi glass"><div class="kpi-label">平均延迟</div><div class="kpi-value mono" id="kpiAvg">-</div></div>
+            <div class="kpi glass"><div class="kpi-label">P95 延迟</div><div class="kpi-value mono" id="kpiP95">-</div></div>
+          </div>
+          <div class="filter-bar">
+            <select id="fltModel"><option value="">全部模型</option></select>
+            <select id="fltStatus">
+              <option value="">全部状态</option>
+              <option value="ok">成功</option>
+              <option value="fail">失败</option>
+              <option value="throttle">限流</option>
+              <option value="no_account">无可用账号</option>
+            </select>
+            <input type="text" id="fltQ" placeholder="搜索模型 / 邮箱 / 错误" style="width:200px">
+            <button class="btn btn-ghost" onclick="applyLogFilter()">
+              <i data-lucide="search" style="width:14px;height:14px"></i>筛选
+            </button>
+            <button class="btn btn-danger-ghost" onclick="clearLogs()">
+              <i data-lucide="trash-2" style="width:14px;height:14px"></i>清空日志
+            </button>
+          </div>
+          <div class="table-card glass">
+            <div class="table-scroll">
+              <table>
+                <thead>
+                  <tr>
+                    <th>时间</th><th>模型</th><th>账号</th><th>状态</th>
+                    <th>流式</th><th>耗时</th><th>尝试</th><th>错误</th>
+                  </tr>
+                </thead>
+                <tbody id="logsBody">
+                  <tr><td colspan="8" class="empty-cell">加载中…</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="pager">
+              <span id="logsPageInfo">-</span>
+              <button class="btn btn-ghost" onclick="logsPrevPage()">上一页</button>
+              <button class="btn btn-ghost" onclick="logsNextPage()">下一页</button>
+            </div>
+          </div>
+        </div>
+
+        <div id="logTabRuntime" hidden>
+          <div class="filter-bar">
+            <select id="fltRtLevel">
+              <option value="">全部级别</option>
+              <option value="init">init</option>
+              <option value="main">main</option>
+              <option value="info">info</option>
+              <option value="warning">warning</option>
+              <option value="error">error</option>
+            </select>
+            <input type="text" id="fltRtQ" placeholder="搜索日志内容" style="width:200px">
+            <button class="btn btn-ghost" onclick="loadRuntimeLogs()">
+              <i data-lucide="search" style="width:14px;height:14px"></i>筛选
+            </button>
+            <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--text-secondary)">
+              <label class="switch"><input type="checkbox" id="rtAutoRefresh"><span class="slider"></span></label>
+              自动刷新
+            </label>
+          </div>
+          <div class="table-card glass">
+            <div class="rt-list mono" id="rtBody">
+              <div class="empty-cell" style="padding:16px">加载中…</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 模型测试页 -->
+      <section id="page-test" class="page" hidden>
+        <div class="page-header">
+          <div>
+            <h2>模型测试</h2>
+            <p class="sub">直接向上游发送测试请求，验证账号与模型可用性</p>
+          </div>
+        </div>
+        <div class="test-grid">
+          <div class="about-card glass" style="margin:0">
+            <div class="form-group">
+              <label for="testModel">模型</label>
+              <select id="testModel"></select>
+            </div>
+            <div class="form-group">
+              <label for="testAccount">账号（可选，默认自动轮换）</label>
+              <select id="testAccount"><option value="">自动轮换</option></select>
+            </div>
+            <div class="form-group">
+              <label for="testContent">消息内容</label>
+              <textarea id="testContent" rows="4">你好，请用一句话介绍自己</textarea>
+            </div>
+            <button class="btn btn-primary btn-block" id="btnTestSend" onclick="sendTest()">
+              <i data-lucide="send" style="width:14px;height:14px"></i>发送测试
+            </button>
+          </div>
+          <div class="about-card glass" style="margin:0">
+            <h3 style="margin-top:0">响应结果</h3>
+            <div class="resp-box" id="testResult">点击左侧「发送测试」查看结果</div>
+            <div class="resp-meta mono" id="testMeta"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 访问信息页 -->
+      <section id="page-access" class="page" hidden>
+        <div class="page-header">
+          <div>
+            <h2>访问信息</h2>
+            <p class="sub">客户端接入所需的地址与凭证</p>
+          </div>
+          <button class="btn btn-ghost" onclick="loadAccess()">
+            <i data-lucide="refresh-cw" style="width:14px;height:14px"></i>刷新
+          </button>
+        </div>
+        <div class="about-grid">
+          <div class="about-card glass">
+            <h3 style="margin-top:0">API 端点</h3>
+            <div id="accessEndpoints"><p class="muted" style="font-size:13px">加载中…</p></div>
+          </div>
+          <div class="about-card glass">
+            <h3 style="margin-top:0">数据文件位置</h3>
+            <div id="accessFiles"><p class="muted" style="font-size:13px">加载中…</p></div>
+          </div>
+        </div>
+        <div class="about-card glass" style="margin-top:16px">
+          <h3 style="margin-top:0">客户端配置示例</h3>
+          <p class="muted" style="font-size:13px">在 Cherry Studio / NextChat / LobeChat 等客户端中选择「OpenAI 兼容」类型，填入：</p>
+          <div class="access-item"><span class="label">API 地址 (Base URL)</span><code id="accessBaseUrl">-</code>
+            <button class="btn btn-ghost" onclick="copyText('accessBaseUrl')"><i data-lucide="clipboard" style="width:14px;height:14px"></i></button>
+          </div>
+          <div class="access-item"><span class="label">API 密钥</span><code>在「API 密钥」页生成，形如 sk-…</code></div>
+          <pre class="mono" style="white-space:pre-wrap;font-size:12px;line-height:1.7;background:rgba(0,0,0,.25);padding:12px;border-radius:8px;margin-top:14px" id="accessCurl">curl …</pre>
+        </div>
+      </section>
+
       <!-- 设置页 -->
       <section id="page-settings" class="page" hidden>
         <div class="page-header">
           <div>
             <h2>设置</h2>
-            <p class="sub">管理后台安全设置</p>
+            <p class="sub">运行参数与后台安全设置</p>
           </div>
         </div>
         <div class="about-grid">
+          <div class="about-card glass" style="max-width:420px">
+            <h3 style="margin-top:0">运行参数</h3>
+            <div class="form-group">
+              <label for="setDefaultModel">默认模型（请求未指定时使用）</label>
+              <select id="setDefaultModel"></select>
+            </div>
+            <div class="form-group">
+              <label for="setTimeout">上游超时（秒）</label>
+              <input type="number" id="setTimeout" min="10" max="600" step="1">
+            </div>
+            <div class="form-group">
+              <label for="setRetry">失败重试次数（换号）</label>
+              <input type="number" id="setRetry" min="1" max="10" step="1">
+            </div>
+            <div class="form-group">
+              <label for="setCdFail">普通失败冷却（秒）</label>
+              <input type="number" id="setCdFail" min="0" max="86400" step="1">
+            </div>
+            <div class="form-group">
+              <label for="setCdThrottle">限流冷却（秒）</label>
+              <input type="number" id="setCdThrottle" min="0" max="86400" step="1">
+            </div>
+            <div class="form-group">
+              <label for="setCdNotLogin">Cookie 失效冷却（秒）</label>
+              <input type="number" id="setCdNotLogin" min="0" max="86400" step="1">
+            </div>
+            <button class="btn btn-primary" onclick="saveSettings()">保存运行参数</button>
+            <div id="settingsStatus" class="fetch-status" hidden style="margin-top:10px"></div>
+          </div>
           <div class="about-card glass" style="max-width:420px">
             <h3 style="margin-top:0">修改管理员密码</h3>
             <div class="form-group">
@@ -755,7 +1082,8 @@
           <div class="about-card glass">
             <h3>Genspark2API</h3>
             <p>将 Genspark AI 服务封装为 OpenAI 兼容接口的中转服务，支持多账号轮换、限流冷却与代理配置。</p>
-            <p style="margin-top:12px">版本 v1.0.0</p>
+            <p style="margin-top:12px">版本 <span id="aboutVersion">v1.1.0</span></p>
+            <p class="muted" style="font-size:12px;margin-top:6px">已稳定运行 <span id="aboutUptime" class="mono">-</span></p>
           </div>
           <div class="about-card glass">
             <h3>当前配置</h3>
@@ -825,8 +1153,6 @@
 
   /* ---------- 状态 ---------- */
   var accountsCache = [];
-  var modelsCache = [];
-  var modelsLoaded = false;
   var refreshTimer = null;
 
   /* ---------- 工具函数 ---------- */
@@ -971,6 +1297,10 @@
     else { stopAutoRefresh(); }
     if (page === 'accounts') loadAccounts();
     if (page === 'keys') loadKeys();
+    if (page === 'logs') loadLogsPage();
+    if (page === 'test') loadTestPage();
+    if (page === 'access') loadAccess();
+    if (page === 'settings') loadSettings();
     if (page === 'about') loadAbout();
     refreshIcons();
   }
@@ -988,14 +1318,20 @@
   async function loadDashboard() {
     try {
       var data = await api('/api/admin/stats');
-      $('#statTotal').textContent = formatNum(data.total);
-      $('#statReady').textContent = formatNum(data.ready);
-      $('#statCooldown').textContent = formatNum(data.cooldown);
+      $('#statTotal').textContent = formatNum(data.total_accounts);
+      $('#statReady').textContent = formatNum(data.ready_accounts);
+      $('#statCooldown').textContent = formatNum(data.cooldown_accounts);
       $('#statRequests').textContent = formatNum(data.total_requests);
-      renderRecent(data.recent_requests || data.requests || data.recent || []);
+      $('#statSuccessRate').textContent =
+        (typeof data.success_rate === 'number') ? data.success_rate + '%' : '-';
+      renderRecent(data.recent_requests || []);
     } catch (err) {
       if (getToken()) toast('仪表盘数据加载失败：' + err.message, 'error');
     }
+    try {
+      var stats = await api('/api/admin/logs/stats?hours=24');
+      drawTrafficChart(stats.series || []);
+    } catch (err) { /* 图表失败不影响主数据 */ }
   }
 
   function renderRecent(list) {
@@ -1005,21 +1341,94 @@
       return;
     }
     tbody.innerHTML = list.map(function (r) {
-      var ok = r.success !== undefined ? !!r.success
-        : (r.status === 'success' || r.status === 'ok' || r.status === 200);
-      var badge = ok
-        ? '<span class="badge badge-status ok"><span class="dot ok"></span>成功</span>'
-        : '<span class="badge badge-status fail"><span class="dot err"></span>失败</span>';
-      var latency = r.latency_ms !== undefined ? r.latency_ms + ' ms'
-        : (r.latency !== undefined ? r.latency + ' ms' : '-');
       return '<tr>' +
-        '<td class="mono">' + escapeHtml(formatTime(r.time || r.timestamp)) + '</td>' +
-        '<td>' + escapeHtml(r.account || r.email || '-') + '</td>' +
+        '<td class="mono">' + escapeHtml(formatTime(r.time)) + '</td>' +
+        '<td>' + escapeHtml(r.email || (r.account_seq ? '#' + r.account_seq : '-')) + '</td>' +
         '<td>' + escapeHtml(r.model || '-') + '</td>' +
-        '<td>' + badge + '</td>' +
-        '<td class="mono">' + escapeHtml(latency) + '</td>' +
+        '<td>' + statusBadgeOf(r.status) + '</td>' +
+        '<td class="mono">' + escapeHtml(r.latency_ms != null ? r.latency_ms + ' ms' : '-') + '</td>' +
       '</tr>';
     }).join('');
+  }
+
+  function statusBadgeOf(status) {
+    if (status === 'ok') {
+      return '<span class="badge badge-status ok"><span class="dot ok"></span>成功</span>';
+    }
+    if (status === 'throttle') {
+      return '<span class="badge throttle"><span class="dot"></span>限流</span>';
+    }
+    if (status === 'no_account') {
+      return '<span class="badge muted-badge"><span class="dot"></span>无账号</span>';
+    }
+    return '<span class="badge badge-status fail"><span class="dot err"></span>失败</span>';
+  }
+
+  /* ---------- 流量图表（纯 Canvas，无依赖） ---------- */
+  function drawTrafficChart(series) {
+    var canvas = $('#trafficChart');
+    if (!canvas) return;
+    var dpr = window.devicePixelRatio || 1;
+    var w = canvas.clientWidth, h = canvas.clientHeight;
+    if (!w || !h) return;
+    canvas.width = w * dpr;
+    canvas.height = h * dpr;
+    var ctx = canvas.getContext('2d');
+    ctx.scale(dpr, dpr);
+    ctx.clearRect(0, 0, w, h);
+    if (!series.length) {
+      ctx.fillStyle = getComputedStyle(document.body).getPropertyValue('--text-tertiary');
+      ctx.font = '12px sans-serif';
+      ctx.fillText('暂无数据', 10, 20);
+      return;
+    }
+    var max = 0;
+    for (var i = 0; i < series.length; i++) {
+      if (series[i].requests > max) max = series[i].requests;
+    }
+    if (max === 0) max = 1;
+    var padL = 30, padB = 18, padT = 6;
+    var plotW = w - padL - 6, plotH = h - padT - padB;
+    var styles = getComputedStyle(document.documentElement);
+    var cOk = styles.getPropertyValue('--success').trim() || '#34c759';
+    var cErr = styles.getPropertyValue('--danger').trim() || '#ff3b30';
+    var cText = styles.getPropertyValue('--text-tertiary').trim() || '#86868b';
+    /* 网格线 + y 轴刻度 */
+    ctx.strokeStyle = 'rgba(128,128,128,0.18)';
+    ctx.fillStyle = cText;
+    ctx.font = '10px sans-serif';
+    ctx.textAlign = 'right';
+    for (var g = 0; g <= 2; g++) {
+      var gy = padT + plotH - (plotH * g / 2);
+      ctx.beginPath(); ctx.moveTo(padL, gy); ctx.lineTo(w - 4, gy); ctx.stroke();
+      ctx.fillText(String(Math.round(max * g / 2)), padL - 5, gy + 3);
+    }
+    var n = series.length;
+    var bw = Math.max(2, Math.min(14, (plotW / n) * 0.6));
+    var step = plotW / n;
+    for (var j = 0; j < n; j++) {
+      var s = series[j];
+      var x = padL + j * step + (step - bw) / 2;
+      var okH = plotH * (s.ok / max), errH = plotH * (s.error / max);
+      var baseY = padT + plotH;
+      if (s.ok > 0) {
+        ctx.fillStyle = cOk;
+        ctx.fillRect(x, baseY - okH, bw, okH);
+      }
+      if (s.error > 0) {
+        ctx.fillStyle = cErr;
+        ctx.fillRect(x, baseY - okH - errH, bw, errH);
+      }
+    }
+    /* x 轴时间标签：最多 6 个 */
+    ctx.fillStyle = cText;
+    ctx.textAlign = 'center';
+    var labelEvery = Math.ceil(n / 6);
+    for (var k = 0; k < n; k += labelEvery) {
+      var lx = padL + k * step + step / 2;
+      var label = (series[k].at || '').split(' ').pop();
+      ctx.fillText(label, lx, h - 4);
+    }
   }
 
   /* ---------- 账号管理 ---------- */
@@ -1160,6 +1569,51 @@
     }
   }
 
+  /* ---------- 账号导入 / 导出 ---------- */
+  async function exportAccounts() {
+    try {
+      var data = await api('/api/admin/accounts/export');
+      var blob = new Blob([JSON.stringify(data, null, 2)],
+        { type: 'application/json' });
+      var a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'genspark2api-accounts-' +
+        new Date().toISOString().slice(0, 10) + '.json';
+      a.click();
+      URL.revokeObjectURL(a.href);
+      toast('已导出 ' + (data.accounts || []).length + ' 个账号', 'success');
+    } catch (err) {
+      toast('导出失败：' + err.message, 'error');
+    }
+  }
+
+  function importAccounts() {
+    var input = $('#importFile');
+    input.value = '';
+    input.click();
+  }
+
+  async function handleImportFile(e) {
+    var file = e.target.files && e.target.files[0];
+    if (!file) return;
+    try {
+      var text = await file.text();
+      var data = JSON.parse(text);
+      var accounts = data.accounts || (Array.isArray(data) ? data : null);
+      if (!accounts) throw new Error('文件中没有 accounts 数组');
+      var res = await api('/api/admin/accounts/import', {
+        method: 'POST', body: { accounts: accounts }
+      });
+      var msg = '导入 ' + res.imported + ' 个';
+      if (res.skipped) msg += '，跳过已存在 ' + res.skipped + ' 个';
+      if (res.failed && res.failed.length) msg += '，失败 ' + res.failed.length + ' 个';
+      toast(msg, (res.failed && res.failed.length) ? 'error' : 'success');
+      loadAccounts();
+    } catch (err) {
+      toast('导入失败：' + err.message, 'error');
+    }
+  }
+
   /* ---------- 添加账号模态框 ---------- */
   function openAddModal() {
     $('#modalOverlay').hidden = false;
@@ -1266,40 +1720,83 @@
   }
 
   /* ---------- API 密钥 ---------- */
+  var keysCache = [];
   async function loadKeys() {
     var tbody = $('#keysBody');
     try {
       var data = await api('/api/admin/keys');
       var keys = data.keys || [];
+      keysCache = keys;
       if (!keys.length) {
-        tbody.innerHTML = '<tr><td colspan="3" class="empty-cell">暂无密钥，点右上角生成</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="6" class="empty-cell">暂无密钥，点上方生成</td></tr>';
         return;
       }
-      tbody.innerHTML = keys.map(function (k, i) {
+      tbody.innerHTML = keys.map(function (k) {
         return '<tr>' +
-          '<td class="mono">' + (i + 1) + '</td>' +
+          '<td>' + escapeHtml(k.name || '-') + '</td>' +
           '<td class="mono">' + k.prefix + '…' + k.suffix + '</td>' +
-          '<td><button class="btn btn-ghost" style="color:#f87171" onclick="deleteKey(' + i + ')">' +
+          '<td><label class="switch"><input type="checkbox" ' +
+          (k.enabled ? 'checked ' : '') + 'onchange="toggleKey(\'' + k.id + '\', this.checked)">' +
+          '<span class="slider"></span></label></td>' +
+          '<td class="mono" style="font-size:12px">' + escapeHtml(k.created_at || '-') + '</td>' +
+          '<td class="mono" style="font-size:12px">' + escapeHtml(k.last_used_at || '从未使用') + '</td>' +
+          '<td class="cell-actions">' +
+          '<button class="btn btn-ghost" onclick="renameKey(\'' + k.id + '\')">' +
+          '<i data-lucide="pencil" style="width:14px;height:14px"></i>改名</button>' +
+          '<button class="btn btn-ghost" style="color:#f87171" onclick="deleteKey(\'' + k.id + '\')">' +
           '<i data-lucide="trash-2" style="width:14px;height:14px"></i>删除</button></td>' +
           '</tr>';
       }).join('');
       refreshIcons();
     } catch (err) {
-      tbody.innerHTML = '<tr><td colspan="3" class="empty-cell">加载失败：' + err.message + '</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="6" class="empty-cell">加载失败：' + err.message + '</td></tr>';
     }
   }
 
   async function createKey() {
     try {
-      var data = await api('/api/admin/keys', { method: 'POST' });
+      var name = ($('#newKeyName').value || '').trim();
+      var data = await api('/api/admin/keys', {
+        method: 'POST', body: { name: name }
+      });
       if (!data.key) throw new Error('未返回密钥');
       $('#newKeyValue').textContent = data.key;
       $('#newKeyBanner').hidden = false;
+      $('#newKeyName').value = '';
       toast('密钥已生成，请立即复制保存', 'success');
       loadKeys();
       refreshIcons();
     } catch (err) {
       toast('生成失败：' + err.message, 'error');
+    }
+  }
+
+  async function toggleKey(id, enabled) {
+    try {
+      await api('/api/admin/keys/' + id, {
+        method: 'PATCH', body: { enabled: enabled }
+      });
+      toast(enabled ? '密钥已启用' : '密钥已禁用');
+      loadKeys();
+    } catch (err) {
+      toast('操作失败：' + err.message, 'error');
+      loadKeys();
+    }
+  }
+
+  async function renameKey(id) {
+    var rec = keysCache.find(function (k) { return k.id === id; }) || {};
+    var oldName = rec.name || '';
+    var name = prompt('新的密钥名称：', oldName || '');
+    if (name === null) return;
+    try {
+      await api('/api/admin/keys/' + id, {
+        method: 'PATCH', body: { name: name }
+      });
+      toast('已改名');
+      loadKeys();
+    } catch (err) {
+      toast('改名失败：' + err.message, 'error');
     }
   }
 
@@ -1319,10 +1816,10 @@
     }
   }
 
-  async function deleteKey(index) {
+  async function deleteKey(id) {
     if (!confirm('确定删除这把密钥？使用它的客户端会立即失效。')) return;
     try {
-      await api('/api/admin/keys/' + index, { method: 'DELETE' });
+      await api('/api/admin/keys/' + id, { method: 'DELETE' });
       toast('密钥已删除', 'success');
       loadKeys();
     } catch (err) {
@@ -1330,7 +1827,324 @@
     }
   }
 
-  /* ---------- 关于页 ---------- */
+  /* ---------- 日志页 ---------- */
+  var logState = { offset: 0, limit: 50, total: 0 };
+  var rtTimer = null;
+
+  function switchLogTab(tab) {
+    var btns = document.querySelectorAll('#page-logs .tab-btn');
+    for (var i = 0; i < btns.length; i++) {
+      btns[i].classList.toggle('active', btns[i].dataset.tab === tab);
+    }
+    $('#logTabRequests').hidden = tab !== 'requests';
+    $('#logTabRuntime').hidden = tab !== 'runtime';
+    stopRtAutoRefresh();
+    if (tab === 'runtime') loadRuntimeLogs();
+  }
+
+  function loadLogsPage() {
+    logState.offset = 0;
+    loadLogKpis();
+    loadLogs();
+    fillModelFilter();
+  }
+
+  async function fillModelFilter() {
+    var sel = $('#fltModel');
+    if (sel.options.length > 1) return;
+    try {
+      var data = await api('/api/admin/settings');
+      (data.models || []).forEach(function (m) {
+        var o = document.createElement('option');
+        o.value = m; o.textContent = m;
+        sel.appendChild(o);
+      });
+    } catch (err) { /* 忽略 */ }
+  }
+
+  async function loadLogKpis() {
+    try {
+      var s = await api('/api/admin/logs/stats?hours=24');
+      $('#kpiTotal').textContent = formatNum(s.totals.requests);
+      $('#kpiRate').textContent = s.totals.success_rate + '%';
+      $('#kpiAvg').textContent = s.latency.avg_ms ? s.latency.avg_ms + ' ms' : '-';
+      $('#kpiP95').textContent = s.latency.p95_ms ? s.latency.p95_ms + ' ms' : '-';
+    } catch (err) { /* 忽略 */ }
+  }
+
+  function logQuery() {
+    var p = [];
+    var m = $('#fltModel').value, st = $('#fltStatus').value,
+        q = $('#fltQ').value.trim();
+    if (m) p.push('model=' + encodeURIComponent(m));
+    if (st) p.push('status=' + encodeURIComponent(st));
+    if (q) p.push('q=' + encodeURIComponent(q));
+    p.push('limit=' + logState.limit);
+    p.push('offset=' + logState.offset);
+    return p.join('&');
+  }
+
+  async function loadLogs() {
+    var tbody = $('#logsBody');
+    try {
+      var data = await api('/api/admin/logs?' + logQuery());
+      logState.total = data.total || 0;
+      var items = data.items || [];
+      if (!items.length) {
+        tbody.innerHTML = '<tr><td colspan="8" class="empty-cell">暂无记录</td></tr>';
+      } else {
+        tbody.innerHTML = items.map(function (r) {
+          return '<tr>' +
+            '<td class="mono" style="font-size:12px">' + escapeHtml(r.time || '-') + '</td>' +
+            '<td>' + escapeHtml(r.model || '-') + '</td>' +
+            '<td style="font-size:12px">' + escapeHtml(r.email || (r.account_seq ? '#' + r.account_seq : '-')) + '</td>' +
+            '<td>' + statusBadgeOf(r.status) + '</td>' +
+            '<td>' + (r.stream ? '是' : '否') + '</td>' +
+            '<td class="mono">' + (r.latency_ms != null ? r.latency_ms + ' ms' : '-') + '</td>' +
+            '<td class="mono">' + (r.attempts || 1) + '</td>' +
+            '<td>' + (r.error ? '<span class="err-text">' + escapeHtml(r.error) + '</span>' : '-') + '</td>' +
+          '</tr>';
+        }).join('');
+      }
+      var from = logState.total ? logState.offset + 1 : 0;
+      var to = Math.min(logState.offset + logState.limit, logState.total);
+      $('#logsPageInfo').textContent = from + ' - ' + to + ' / 共 ' + logState.total + ' 条';
+      refreshIcons();
+    } catch (err) {
+      tbody.innerHTML = '<tr><td colspan="8" class="empty-cell">加载失败：' + err.message + '</td></tr>';
+    }
+  }
+
+  function applyLogFilter() { logState.offset = 0; loadLogs(); }
+  function logsPrevPage() {
+    if (logState.offset >= logState.limit) {
+      logState.offset -= logState.limit;
+      loadLogs();
+    }
+  }
+  function logsNextPage() {
+    if (logState.offset + logState.limit < logState.total) {
+      logState.offset += logState.limit;
+      loadLogs();
+    }
+  }
+
+  async function clearLogs() {
+    if (!confirm('确定清空全部请求日志？此操作不可恢复。')) return;
+    try {
+      var res = await api('/api/admin/logs', { method: 'DELETE' });
+      toast('已清空 ' + (res.deleted || 0) + ' 条日志');
+      loadLogsPage();
+    } catch (err) {
+      toast('清空失败：' + err.message, 'error');
+    }
+  }
+
+  /* ---------- 运行日志 ---------- */
+  async function loadRuntimeLogs() {
+    var body = $('#rtBody');
+    try {
+      var p = ['limit=300'];
+      var lv = $('#fltRtLevel').value, q = $('#fltRtQ').value.trim();
+      if (lv) p.push('level=' + encodeURIComponent(lv));
+      if (q) p.push('q=' + encodeURIComponent(q));
+      var data = await api('/api/admin/runtime-logs?' + p.join('&'));
+      var items = data.items || [];
+      if (!items.length) {
+        body.innerHTML = '<div class="empty-cell" style="padding:16px">暂无日志</div>';
+        return;
+      }
+      body.innerHTML = items.map(function (r) {
+        return '<div class="rt-item">' +
+          '<span class="rt-time">' + escapeHtml(r.time) + '</span>' +
+          '<span class="rt-level ' + escapeHtml(r.level) + '">' + escapeHtml(r.level) + '</span>' +
+          '<span class="rt-msg">' + escapeHtml(r.message) + '</span>' +
+        '</div>';
+      }).join('');
+      body.scrollTop = body.scrollHeight;
+    } catch (err) {
+      body.innerHTML = '<div class="empty-cell" style="padding:16px">加载失败：' + escapeHtml(err.message) + '</div>';
+    }
+  }
+
+  function stopRtAutoRefresh() {
+    if (rtTimer) { clearInterval(rtTimer); rtTimer = null; }
+    var cb = $('#rtAutoRefresh');
+    if (cb) cb.checked = false;
+  }
+
+  function handleRtAutoRefresh(e) {
+    if (e.target.checked) {
+      rtTimer = setInterval(loadRuntimeLogs, 3000);
+    } else if (rtTimer) {
+      clearInterval(rtTimer); rtTimer = null;
+    }
+  }
+
+  /* ---------- 模型测试 ---------- */
+  var testPageLoaded = false;
+  async function loadTestPage() {
+    if (testPageLoaded) return;
+    testPageLoaded = true;
+    try {
+      var data = await api('/api/admin/settings');
+      var sel = $('#testModel');
+      (data.models || []).forEach(function (m) {
+        var o = document.createElement('option');
+        o.value = m; o.textContent = m;
+        if (data.settings && m === data.settings.default_model) o.selected = true;
+        sel.appendChild(o);
+      });
+    } catch (err) {
+      toast('模型列表加载失败：' + err.message, 'error');
+    }
+    try {
+      var acc = await api('/api/admin/accounts');
+      var asel = $('#testAccount');
+      (acc.accounts || []).forEach(function (a) {
+        var o = document.createElement('option');
+        o.value = a.seq;
+        o.textContent = '#' + a.seq + ' ' + (a.email || '') +
+          (a.ready ? '' : '（不可用）');
+        asel.appendChild(o);
+      });
+    } catch (err) { /* 忽略 */ }
+  }
+
+  async function sendTest() {
+    var btn = $('#btnTestSend');
+    var box = $('#testResult');
+    var meta = $('#testMeta');
+    btn.disabled = true;
+    box.textContent = '请求中…';
+    meta.textContent = '';
+    try {
+      var body = {
+        model: $('#testModel').value,
+        content: $('#testContent').value
+      };
+      var seq = $('#testAccount').value;
+      if (seq) body.account_seq = Number(seq);
+      var res = await api('/api/admin/test-chat', { method: 'POST', body: body });
+      if (res.ok) {
+        box.textContent = res.content || '（空响应）';
+        meta.textContent = '账号 #' + res.account_seq + ' ' + (res.email || '') +
+          ' · 模型 ' + res.model + ' · 耗时 ' + res.latency_ms + ' ms';
+      } else {
+        box.textContent = '请求失败：' + (res.error || '未知错误');
+        meta.textContent = '账号 #' + (res.account_seq || '-') +
+          ' · 耗时 ' + (res.latency_ms != null ? res.latency_ms + ' ms' : '-');
+      }
+    } catch (err) {
+      box.textContent = '请求失败：' + err.message;
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
+  /* ---------- 访问信息 ---------- */
+  async function loadAccess() {
+    try {
+      var info = await api('/api/admin/info');
+      var ep = $('#accessEndpoints');
+      ep.innerHTML = '';
+      var items = [
+        ['Base URL', info.base_url + '/v1'],
+        ['Chat Completions', info.endpoints.chat_completions],
+        ['Models', info.endpoints.models],
+        ['Health', info.endpoints.health]
+      ];
+      items.forEach(function (pair, i) {
+        var div = document.createElement('div');
+        div.className = 'access-item';
+        div.innerHTML = '<span class="label">' + escapeHtml(pair[0]) + '</span>' +
+          '<code id="accessEp' + i + '">' + escapeHtml(pair[1]) + '</code>' +
+          '<button class="btn btn-ghost" onclick="copyText(\'accessEp' + i + '\')">' +
+          '<i data-lucide="clipboard" style="width:14px;height:14px"></i></button>';
+        ep.appendChild(div);
+      });
+      var files = $('#accessFiles');
+      files.innerHTML = '';
+      var fmap = [['账号配置', info.data_files.accounts],
+                  ['后台配置', info.data_files.config],
+                  ['请求日志', info.data_files.request_logs]];
+      fmap.forEach(function (pair) {
+        var div = document.createElement('div');
+        div.className = 'access-item';
+        div.innerHTML = '<span class="label">' + escapeHtml(pair[0]) + '</span>' +
+          '<code>' + escapeHtml(pair[1]) + '</code>';
+        files.appendChild(div);
+      });
+      $('#accessBaseUrl').textContent = info.base_url + '/v1';
+      $('#accessCurl').textContent =
+        'curl ' + info.endpoints.chat_completions + ' \\\n' +
+        '  -H "Authorization: Bearer sk-你的密钥" \\\n' +
+        '  -H "Content-Type: application/json" \\\n' +
+        '  -d \'{"model":"claude-4-5-haiku","messages":[{"role":"user","content":"你好"}]}\'';
+      refreshIcons();
+    } catch (err) {
+      toast('访问信息加载失败：' + err.message, 'error');
+    }
+  }
+
+  async function copyText(elemId) {
+    var text = $('#' + elemId).textContent;
+    try {
+      await navigator.clipboard.writeText(text);
+      toast('已复制', 'success');
+    } catch (e) {
+      toast('复制失败，请手动选择复制', 'error');
+    }
+  }
+
+  /* ---------- 运行参数设置 ---------- */
+  var settingsLoaded = false;
+  async function loadSettings() {
+    try {
+      var data = await api('/api/admin/settings');
+      var s = data.settings || {};
+      var sel = $('#setDefaultModel');
+      if (!settingsLoaded) {
+        sel.innerHTML = '';
+        (data.models || []).forEach(function (m) {
+          var o = document.createElement('option');
+          o.value = m; o.textContent = m;
+          sel.appendChild(o);
+        });
+        settingsLoaded = true;
+      }
+      sel.value = s.default_model || '';
+      $('#setTimeout').value = s.request_timeout_s;
+      $('#setRetry').value = s.retry_attempts;
+      $('#setCdFail').value = s.cooldown_fail_s;
+      $('#setCdThrottle').value = s.cooldown_throttle_s;
+      $('#setCdNotLogin').value = s.cooldown_not_login_s;
+    } catch (err) {
+      toast('设置加载失败：' + err.message, 'error');
+    }
+  }
+
+  async function saveSettings() {
+    var st = $('#settingsStatus');
+    function msg(t, cls) { st.textContent = t; st.hidden = false; st.className = 'fetch-status ' + cls; }
+    try {
+      await api('/api/admin/settings', {
+        method: 'PATCH',
+        body: {
+          default_model: $('#setDefaultModel').value,
+          request_timeout_s: Number($('#setTimeout').value),
+          retry_attempts: Number($('#setRetry').value),
+          cooldown_fail_s: Number($('#setCdFail').value),
+          cooldown_throttle_s: Number($('#setCdThrottle').value),
+          cooldown_not_login_s: Number($('#setCdNotLogin').value)
+        }
+      });
+      msg('✅ 运行参数已保存', 'done');
+    } catch (err) {
+      msg(err.message, 'error');
+    }
+  }
+
   /* ---------- 设置页：修改密码 ---------- */
   async function changePassword() {
     var oldPwd = $('#oldPwd').value;
@@ -1357,21 +2171,18 @@
   async function loadAbout() {
     $('#cfgPort').textContent = location.port || (location.protocol === 'https:' ? '443' : '80');
     try {
-      var stats = await api('/api/admin/stats');
-      $('#cfgAccounts').textContent = formatNum(stats.total);
+      var info = await api('/api/admin/info');
+      $('#cfgAccounts').textContent = formatNum(info.account_count);
+      $('#cfgModels').textContent = formatNum(info.model_count);
+      $('#cfgPort').textContent = String(info.port);
+      if (info.version) $('#aboutVersion').textContent = 'v' + info.version;
+      if (typeof info.uptime_s === 'number') {
+        $('#aboutUptime').textContent = formatDuration(info.uptime_s);
+      }
     } catch (err) {
       $('#cfgAccounts').textContent = '-';
+      $('#cfgModels').textContent = '-';
     }
-    if (!modelsLoaded) {
-      modelsLoaded = true;
-      try {
-        var data = await api('/v1/models');
-        modelsCache = data.data || data.models || [];
-      } catch (err) {
-        modelsCache = [];
-      }
-    }
-    $('#cfgModels').textContent = modelsCache.length ? String(modelsCache.length) : '-';
   }
 
   /* ---------- 事件绑定 ---------- */
@@ -1385,6 +2196,14 @@
     $('#addForm').addEventListener('submit', handleAddAccount);
     $('#modalOverlay').addEventListener('click', function (e) {
       if (e.target === this) closeAddModal();
+    });
+    $('#importFile').addEventListener('change', handleImportFile);
+    $('#rtAutoRefresh').addEventListener('change', handleRtAutoRefresh);
+    $('#fltQ').addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') applyLogFilter();
+    });
+    $('#fltRtQ').addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') loadRuntimeLogs();
     });
     document.addEventListener('keydown', function (e) {
       if (e.key === 'Escape' && !$('#modalOverlay').hidden) closeAddModal();
@@ -1412,6 +2231,21 @@
   window.createKey = createKey;
   window.copyNewKey = copyNewKey;
   window.deleteKey = deleteKey;
+  window.toggleKey = toggleKey;
+  window.renameKey = renameKey;
+  window.exportAccounts = exportAccounts;
+  window.importAccounts = importAccounts;
+  window.switchLogTab = switchLogTab;
+  window.loadLogsPage = loadLogsPage;
+  window.applyLogFilter = applyLogFilter;
+  window.logsPrevPage = logsPrevPage;
+  window.logsNextPage = logsNextPage;
+  window.clearLogs = clearLogs;
+  window.loadRuntimeLogs = loadRuntimeLogs;
+  window.sendTest = sendTest;
+  window.loadAccess = loadAccess;
+  window.copyText = copyText;
+  window.saveSettings = saveSettings;
 
   document.addEventListener('DOMContentLoaded', init);
 })();

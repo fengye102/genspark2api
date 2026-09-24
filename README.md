@@ -11,7 +11,7 @@ cookies; the proxy itself is pure HTTP.
 
 ## 🚀 Quick link
 
-[📥 Download v1.0.1 Windows exe](https://github.com/fengye102/genspark2api/releases/tag/v1.0.1)
+[📥 Download v1.1.0 Windows exe](https://github.com/fengye102/genspark2api/releases/tag/v1.1.0)
 
 [中文快速指南](README_zh-CN.md) — 双击即用，一键获取 Cookie
 
@@ -128,13 +128,25 @@ The new password is persisted to `config.json` and takes precedence over the def
 
 Pages:
 
-- **仪表盘** — per-account stats (success / failure counters, cooldown state)
+- **仪表盘** — per-account stats (success / failure counters, cooldown state), total
+  requests, success rate, a 24 h traffic chart, and the most recent requests
 - **账号管理** — add an account (one-click **获取 Cookie（自动登录）** opens a browser,
   captures the session after you log in, and pre-fills the form; or paste a cookie string
-  manually), delete, force-cooldown, or reset an account
-- **API 密钥** — generate / delete API keys. A newly generated key is shown **once**;
-  copy it immediately. At least one key must exist.
-- **设置** — change the admin password
+  manually), delete, force-cooldown, or reset an account; export / import the whole
+  account pool as JSON
+- **API 密钥** — generate named keys, enable / disable them with a switch, rename, or
+  delete. A newly generated key is shown **once**; copy it immediately. At least one key
+  must exist. Each key tracks its last-used time.
+- **日志** — request logs (filter by model / status / keyword, paginated, persisted to
+  `logs/requests.jsonl`) with 24 h KPIs (requests, success rate, avg / P95 latency),
+  plus runtime logs with level filtering and auto-refresh
+- **模型测试** — send a test chat upstream (optionally pinning one account) to verify
+  model and account availability
+- **访问信息** — copy-ready endpoints (Base URL / chat / models / health), data file
+  locations, and client config examples for Cherry Studio / NextChat / LobeChat
+- **设置** — runtime parameters (default model, upstream timeout, retry count, cooldown
+  durations; persisted to `config.json`) and the admin password
+- **关于** — version, uptime, model count
 
 ### API keys
 

@@ -15,6 +15,7 @@
   GET  /state
 """
 import json
+import logging
 import os
 import re
 import secrets
@@ -22,6 +23,7 @@ import sys
 import threading
 import time
 import uuid
+from collections import deque
 
 from curl_cffi import requests as cffi
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
@@ -38,6 +40,7 @@ else:
     BASE = os.path.dirname(os.path.abspath(__file__))
 MAP_FILE = os.environ.get("GS_ACCOUNTS", os.path.join(BASE, "accounts.json"))
 PORT = int(os.environ.get("GS_PORT", "8899"))
+VERSION = "1.1.0"
 
 UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
       "(KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36")
@@ -71,6 +74,99 @@ ALIAS = {
 
 LOCK = threading.Lock()
 _rr = 0
+
+# ---------- 运行时日志：内存环形缓冲，管理后台可查看 ----------
+_RUNTIME_LOGS = deque(maxlen=500)
+_RTLOG_LOCK = threading.Lock()
+_rtlog_id = 0
+
+
+def rlog(level, msg):
+    """打印到控制台，同时写入运行时日志环形缓冲。"""
+    global _rtlog_id
+    line = f"[{level}] {msg}"
+    print(line, flush=True)
+    with _RTLOG_LOCK:
+        _rtlog_id += 1
+        _RUNTIME_LOGS.append({
+            "id": _rtlog_id,
+            "time": time.strftime("%Y-%m-%d %H:%M:%S"),
+            "level": level,
+            "message": str(msg),
+        })
+
+
+class _RuntimeLogHandler(logging.Handler):
+    """把 uvicorn / 第三方库的 logging 输出也接进环形缓冲。"""
+
+    def emit(self, record):
+        global _rtlog_id
+        try:
+            msg = self.format(record)
+        except Exception:
+            return
+        with _RTLOG_LOCK:
+            _rtlog_id += 1
+            _RUNTIME_LOGS.append({
+                "id": _rtlog_id,
+                "time": time.strftime("%Y-%m-%d %H:%M:%S"),
+                "level": record.levelname.lower(),
+                "message": msg,
+            })
+
+
+logging.getLogger().addHandler(_RuntimeLogHandler())
+
+# ---------- 请求日志：内存环形缓冲 + JSONL 持久化 ----------
+LOG_DIR = os.path.join(BASE, "logs")
+LOG_FILE = os.path.join(LOG_DIR, "requests.jsonl")
+REQUEST_LOGS = deque(maxlen=1000)   # 最新在最左
+_REQLOG_LOCK = threading.Lock()
+
+
+def _load_request_logs():
+    if not os.path.exists(LOG_FILE):
+        return
+    try:
+        with open(LOG_FILE, encoding="utf-8") as f:
+            lines = f.readlines()[-REQUEST_LOGS.maxlen:]
+        for line in lines:
+            try:
+                REQUEST_LOGS.append(json.loads(line))
+            except Exception:
+                continue
+        # 文件里是时间正序，翻转为最新在前
+        REQUEST_LOGS.reverse()
+    except Exception:
+        pass
+
+
+def record_request(model, account=None, stream=False, status="ok",
+                   latency_ms=0, attempts=1, error=""):
+    entry = {
+        "id": uuid.uuid4().hex[:12],
+        "time": time.strftime("%Y-%m-%d %H:%M:%S"),
+        "ts": time.time(),
+        "model": model,
+        "account_seq": getattr(account, "seq", None),
+        "email": (getattr(account, "email", "") or "")[:26],
+        "stream": bool(stream),
+        "status": status,           # ok / fail / throttle / no_account
+        "latency_ms": round(latency_ms),
+        "attempts": attempts,
+        "error": (error or "")[:200],
+    }
+    with _REQLOG_LOCK:
+        REQUEST_LOGS.appendleft(entry)
+    try:
+        os.makedirs(LOG_DIR, exist_ok=True)
+        with open(LOG_FILE, "a", encoding="utf-8") as f:
+            f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+    except Exception:
+        pass
+
+
+_load_request_logs()
 
 
 class Account:
@@ -141,9 +237,9 @@ def load_accounts():
         try:
             with open(MAP_FILE, "w", encoding="utf-8") as f:
                 json.dump({"accounts": []}, f, indent=2, ensure_ascii=False)
-            print(f"[init] 未找到 {MAP_FILE}，已创建空配置；可在管理面板添加账号", flush=True)
+            rlog("init", f"未找到 {MAP_FILE}，已创建空配置；可在管理面板添加账号")
         except OSError as e:
-            print(f"[init] 无法创建 {MAP_FILE}: {e}（本次以空账号运行）", flush=True)
+            rlog("init", f"无法创建 {MAP_FILE}: {e}（本次以空账号运行）")
         return []
     d = json.load(open(MAP_FILE, encoding="utf-8"))
     accts = []
@@ -157,8 +253,8 @@ def load_accounts():
 
 
 ACCOUNTS = load_accounts()
-print(f"[init] 加载 {len(ACCOUNTS)} 个账号: "
-      f"{[(a.seq, a.email[:22]) for a in ACCOUNTS]}", flush=True)
+rlog("init", f"加载 {len(ACCOUNTS)} 个账号: "
+             f"{[(a.seq, a.email[:22]) for a in ACCOUNTS]}")
 
 
 def save_accounts():
@@ -220,25 +316,114 @@ TOKEN_TTL = 24 * 3600
 # {token: expiry_timestamp}，进程内存存储，重启即失效
 ADMIN_TOKENS = {}
 
+# ---- 运行时设置：管理后台可改，持久化在 config.json 的 settings ----
+DEFAULT_SETTINGS = {
+    "default_model": "claude-4-5-haiku",  # 请求未指定模型时使用
+    "request_timeout_s": 120,             # 上游请求超时（秒）
+    "retry_attempts": 3,                  # 失败时最多换号重试次数
+    "cooldown_fail_s": 60,                # 普通失败冷却时长
+    "cooldown_throttle_s": 3600,          # 限流冷却时长
+    "cooldown_not_login_s": 300,          # cookie 失效冷却时长
+}
+
+
+def _load_settings():
+    s = dict(DEFAULT_SETTINGS)
+    try:
+        saved = _load_config().get("settings") or {}
+        for k in DEFAULT_SETTINGS:
+            if k in saved:
+                s[k] = saved[k]
+    except Exception:
+        pass
+    return s
+
+
+SETTINGS = _load_settings()
+
+
+def _persist_settings():
+    cfg = _load_config()
+    cfg["settings"] = SETTINGS
+    _save_config(cfg)
+
 # ---- API 密钥：调用 /v1/* 时用作 Bearer 凭证，持久化在 config.json 的 api_keys ----
-# 首次启动自动生成一把（向后兼容：此前 /v1/* 无鉴权，现强制要求密钥）
+# 密钥为对象：{id, name, key, enabled, created_at, last_used_at}
+# 兼容旧格式（纯字符串列表），加载时自动迁移。
+def _new_key(name="默认密钥"):
+    return {
+        "id": secrets.token_hex(4),
+        "name": name,
+        "key": "sk-" + secrets.token_hex(24),
+        "enabled": True,
+        "created_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+        "last_used_at": None,
+    }
+
+
+def _migrate_key(item):
+    if isinstance(item, dict) and item.get("key"):
+        item.setdefault("id", secrets.token_hex(4))
+        item.setdefault("name", "默认密钥")
+        item.setdefault("enabled", True)
+        item.setdefault("created_at", time.strftime("%Y-%m-%d %H:%M:%S"))
+        item.setdefault("last_used_at", None)
+        return item
+    if isinstance(item, str) and item:
+        return {"id": secrets.token_hex(4), "name": "默认密钥", "key": item,
+                "enabled": True,
+                "created_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+                "last_used_at": None}
+    return None
+
+
 def _init_api_keys():
     env = os.environ.get("GS_API_KEY")
     if env:
-        return [env]
+        return [{"id": secrets.token_hex(4), "name": "环境变量密钥", "key": env,
+                 "enabled": True,
+                 "created_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+                 "last_used_at": None}]
     cfg = _load_config()
-    keys = cfg.get("api_keys")
-    if not isinstance(keys, list) or not keys:
-        keys = ["sk-" + secrets.token_hex(24)]
-        cfg["api_keys"] = keys
-        try:
-            _save_config(cfg)
-        except Exception:
-            pass
+    raw = cfg.get("api_keys")
+    keys = []
+    if isinstance(raw, list):
+        keys = [k for k in (_migrate_key(i) for i in raw) if k]
+    if not keys:
+        keys = [_new_key()]
+    cfg["api_keys"] = keys
+    try:
+        _save_config(cfg)
+    except Exception:
+        pass
     return keys
 
 
 API_KEYS = _init_api_keys()
+_KEYS_DIRTY = {"dirty": False, "last_flush": 0.0}
+
+
+def _mark_key_used(record):
+    """更新 last_used_at；写入限频，最多每分钟落盘一次。"""
+    record["last_used_at"] = time.strftime("%Y-%m-%d %H:%M:%S")
+    _KEYS_DIRTY["dirty"] = True
+    if time.time() - _KEYS_DIRTY["last_flush"] > 60:
+        _flush_keys()
+
+
+def _flush_keys():
+    if not _KEYS_DIRTY["dirty"]:
+        return
+    _KEYS_DIRTY["dirty"] = False
+    _KEYS_DIRTY["last_flush"] = time.time()
+    if os.environ.get("GS_API_KEY"):
+        return  # 环境变量密钥不落盘
+    try:
+        cfg = _load_config()
+        cfg["api_keys"] = API_KEYS
+        _save_config(cfg)
+    except Exception:
+        pass
 
 
 def verify_api_key(authorization: str = Header(None)):
@@ -249,11 +434,19 @@ def verify_api_key(authorization: str = Header(None)):
                                          "请到管理后台「API 密钥」页生成。",
                               "type": "invalid_api_key"}})
     key = authorization[7:].strip()
-    if not any(secrets.compare_digest(key, k) for k in API_KEYS):
+    for rec in API_KEYS:
+        if rec.get("enabled") and secrets.compare_digest(key, rec["key"]):
+            _mark_key_used(rec)
+            return key
+    if any(secrets.compare_digest(key, rec["key"]) for rec in API_KEYS):
         raise HTTPException(
             status_code=401,
-            detail={"error": {"message": "API 密钥无效",
+            detail={"error": {"message": "API 密钥已被禁用",
                               "type": "invalid_api_key"}})
+    raise HTTPException(
+        status_code=401,
+        detail={"error": {"message": "API 密钥无效",
+                          "type": "invalid_api_key"}})
     return key
 
 
@@ -290,7 +483,7 @@ def pick():
 
 
 def build_body(payload):
-    m = payload.get("model") or "claude-4-5-haiku"
+    m = payload.get("model") or SETTINGS["default_model"]
     m = ALIAS.get(m, m)
     return {
         "ai_chat_model": m,
@@ -364,57 +557,69 @@ def models(_: str = Depends(verify_api_key)):
 @app.post("/v1/chat/completions")
 async def chat(req: Request, _: str = Depends(verify_api_key)):
     payload = await req.json()
-    model = payload.get("model") or "claude-4-5-haiku"
+    model = payload.get("model") or SETTINGS["default_model"]
     want_stream = bool(payload.get("stream"))
     body = build_body(payload)
     cid = "chatcmpl-" + uuid.uuid4().hex[:24]
     created = int(time.time())
+    timeout = int(SETTINGS["request_timeout_s"])
+    t0 = time.time()
 
     # 尝试轮转（最多试 3 个号）
     last_err = None
-    for attempt in range(3):
+    last_acct = None
+    attempts = 0
+    for attempt in range(int(SETTINGS["retry_attempts"])):
         acct = pick()
         if acct is None:
+            record_request(model, None, want_stream, "no_account",
+                           (time.time() - t0) * 1000, attempts,
+                           "所有账号都在冷却中")
             return JSONResponse(
                 {"error": {"message": "所有账号都在冷却中（配额耗尽）",
                            "type": "no_account"}}, status_code=429)
+        attempts += 1
+        last_acct = acct
         s = acct.session()
 
         if not want_stream:
             try:
                 r = s.post(UPSTREAM, headers=acct.headers(),
-                           data=json.dumps(body), proxies=acct.proxies, timeout=120)
+                           data=json.dumps(body), proxies=acct.proxies,
+                           timeout=timeout)
                 t = r.text
             except Exception as e:
                 acct.stats["fail"] += 1
-                acct.cooldown(30)
+                acct.cooldown(int(SETTINGS["cooldown_fail_s"]))
                 last_err = f"{type(e).__name__}: {e}"
                 continue
 
             if r.status_code >= 400:
                 acct.stats["fail"] += 1
-                acct.cooldown(60)
+                acct.cooldown(int(SETTINGS["cooldown_fail_s"]))
                 last_err = f"upstream_http_{r.status_code}"
                 continue
 
             if "not login" in t:
                 acct.stats["fail"] += 1
-                acct.cooldown(300)
+                acct.cooldown(int(SETTINGS["cooldown_not_login_s"]))
                 last_err = "not_login"
                 continue
             if "Rate limit" in t or "too quickly" in t:
                 acct.stats["throttle"] += 1
-                acct.cooldown(3600)
+                acct.cooldown(int(SETTINGS["cooldown_throttle_s"]))
                 last_err = "rate_limit"
                 continue
 
             content, joined, throttle, err = parse_sse(t)
             if throttle:
                 acct.stats["throttle"] += 1
-                acct.cooldown(3600)
+                acct.cooldown(int(SETTINGS["cooldown_throttle_s"]))
                 last_err = "throttled"
                 continue
             acct.stats["ok"] += 1
+            record_request(model, acct, False, "ok",
+                           (time.time() - t0) * 1000, attempts)
             return JSONResponse({
                 "id": cid, "object": "chat.completion", "created": created,
                 "model": model,
@@ -427,13 +632,14 @@ async def chat(req: Request, _: str = Depends(verify_api_key)):
             })
 
         # 流式
-        def gen(a=acct, b=body, i=cid, cr=created, mo=model):
+        def gen(a=acct, b=body, i=cid, cr=created, mo=model, at=attempts):
             yield f'data: {json.dumps({"id": i, "object": "chat.completion.chunk", "created": cr, "model": mo, "choices": [{"index": 0, "delta": {"role": "assistant"}, "finish_reason": None}]})}\n\n'
             buf, emitted, failed = "", 0, False
+            status, err_msg = "ok", ""
             try:
                 r = a.session().post(
                     UPSTREAM, headers=a.headers(), data=json.dumps(b),
-                    proxies=a.proxies, timeout=120, stream=True)
+                    proxies=a.proxies, timeout=timeout, stream=True)
                 for chunk in r.iter_content(chunk_size=None):
                     if not chunk:
                         continue
@@ -456,22 +662,29 @@ async def chat(req: Request, _: str = Depends(verify_api_key)):
                             mc = j["message"].get("content") or ""
                             if ("too quickly" in mc or "Rate limit" in mc or "积分已用完" in mc) and emitted == 0:
                                 failed = True
+                                status, err_msg = "throttle", mc[:200]
                                 a.stats["throttle"] += 1
-                                a.cooldown(3600)
+                                a.cooldown(int(SETTINGS["cooldown_throttle_s"]))
                                 yield f'data: {json.dumps({"error": {"message": mc[:200], "retry": True}})}\n\n'
             except Exception as e:
                 failed = True
+                status, err_msg = "fail", f"{type(e).__name__}: {e}"
                 a.stats["fail"] += 1
-                a.cooldown(30)
+                a.cooldown(int(SETTINGS["cooldown_fail_s"]))
                 yield f'data: {json.dumps({"error": {"message": f"{type(e).__name__}: {e}", "retry": True}})}\n\n'
             finally:
                 yield f'data: {json.dumps({"id": i, "object": "chat.completion.chunk", "created": cr, "model": mo, "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}]})}\n\n'
                 yield "data: [DONE]\n\n"
                 if not failed:
                     a.stats["ok"] += 1
+                record_request(mo, a, True, status,
+                               (time.time() - t0) * 1000, at, err_msg)
 
         return StreamingResponse(gen(), media_type="text/event-stream")
 
+    record_request(model, last_acct, want_stream, "fail",
+                   (time.time() - t0) * 1000, attempts,
+                   f"所有账号都失败: {last_err}")
     return JSONResponse({"error": {"message": f"所有账号都失败: {last_err}"}},
                         status_code=502)
 
@@ -546,6 +759,10 @@ def admin_change_password(body: PasswordBody, _: str = Depends(verify_admin)):
 @app.get("/api/admin/stats")
 def admin_stats(_: str = Depends(verify_admin)):
     views = [account_view(a) for a in ACCOUNTS]
+    with _REQLOG_LOCK:
+        logs = list(REQUEST_LOGS)
+    total_req = len(logs)
+    ok_req = sum(1 for r in logs if r["status"] == "ok")
     return {
         "total_accounts": len(ACCOUNTS),
         "ready_accounts": sum(1 for v in views if v["ready"]),
@@ -553,6 +770,13 @@ def admin_stats(_: str = Depends(verify_admin)):
         "total_ok": sum(a.stats["ok"] for a in ACCOUNTS),
         "total_fail": sum(a.stats["fail"] for a in ACCOUNTS),
         "total_throttle": sum(a.stats["throttle"] for a in ACCOUNTS),
+        # 请求日志聚合（供仪表盘 + 图表）
+        "total_requests": total_req,
+        "success_requests": ok_req,
+        "success_rate": round(ok_req / total_req * 100, 1) if total_req else 0.0,
+        "recent_requests": logs[:10],
+        "uptime_s": round(time.time() - START, 1),
+        "version": VERSION,
         "accounts": views,
     }
 
@@ -565,13 +789,33 @@ def admin_list_accounts(_: str = Depends(verify_admin)):
 # ---------- API 密钥管理 ----------
 
 def _persist_api_keys():
+    if os.environ.get("GS_API_KEY"):
+        return  # 环境变量密钥不落盘
+    _KEYS_DIRTY["dirty"] = False
+    _KEYS_DIRTY["last_flush"] = time.time()
     cfg = _load_config()
-    cfg["api_keys"] = list(API_KEYS)
+    cfg["api_keys"] = API_KEYS
     _save_config(cfg)
 
 
-def _key_view(k):
-    return {"prefix": k[:10], "suffix": k[-4:], "length": len(k)}
+def _key_view(rec):
+    k = rec["key"]
+    return {
+        "id": rec["id"],
+        "name": rec.get("name", ""),
+        "prefix": k[:10],
+        "suffix": k[-4:],
+        "enabled": bool(rec.get("enabled", True)),
+        "created_at": rec.get("created_at"),
+        "last_used_at": rec.get("last_used_at"),
+    }
+
+
+def _find_key(kid):
+    for rec in API_KEYS:
+        if rec["id"] == kid:
+            return rec
+    return None
 
 
 @app.get("/api/admin/keys")
@@ -580,24 +824,51 @@ def admin_list_keys(_: str = Depends(verify_admin)):
     return {"keys": [_key_view(k) for k in API_KEYS]}
 
 
+class KeyCreateBody(BaseModel):
+    name: str = ""
+
+
+class KeyPatchBody(BaseModel):
+    name: str = None
+    enabled: bool = None
+
+
 @app.post("/api/admin/keys", status_code=201)
-def admin_create_key(_: str = Depends(verify_admin)):
-    key = "sk-" + secrets.token_hex(24)
-    API_KEYS.append(key)
+def admin_create_key(body: KeyCreateBody = None, _: str = Depends(verify_admin)):
+    name = (body.name if body else "") or f"密钥 {len(API_KEYS) + 1}"
+    rec = _new_key(name)
+    API_KEYS.append(rec)
     _persist_api_keys()
     # 完整 key 只在这一个响应里出现一次
-    return {"key": key}
+    return {"key": rec["key"], "id": rec["id"], "name": rec["name"]}
 
 
-@app.delete("/api/admin/keys/{index}")
-def admin_delete_key(index: int, _: str = Depends(verify_admin)):
-    if index < 0 or index >= len(API_KEYS):
+@app.patch("/api/admin/keys/{kid}")
+def admin_patch_key(kid: str, body: KeyPatchBody, _: str = Depends(verify_admin)):
+    rec = _find_key(kid)
+    if rec is None:
+        raise HTTPException(status_code=404, detail="密钥不存在")
+    if body.enabled is False and rec.get("enabled") \
+            and sum(1 for k in API_KEYS if k.get("enabled")) <= 1:
+        raise HTTPException(status_code=400, detail="至少保留一把启用的密钥")
+    if body.name is not None:
+        rec["name"] = body.name.strip() or rec["name"]
+    if body.enabled is not None:
+        rec["enabled"] = bool(body.enabled)
+    _persist_api_keys()
+    return _key_view(rec)
+
+
+@app.delete("/api/admin/keys/{kid}")
+def admin_delete_key(kid: str, _: str = Depends(verify_admin)):
+    rec = _find_key(kid)
+    if rec is None:
         raise HTTPException(status_code=404, detail="密钥不存在")
     if len(API_KEYS) <= 1:
         raise HTTPException(status_code=400, detail="至少保留一把密钥")
-    removed = API_KEYS.pop(index)
+    API_KEYS.remove(rec)
     _persist_api_keys()
-    return {"ok": True, "removed": _key_view(removed)}
+    return {"ok": True, "removed": _key_view(rec)}
 
 
 @app.post("/api/admin/accounts", status_code=201)
@@ -658,6 +929,308 @@ def admin_reset_account(seq: int, _: str = Depends(verify_admin)):
     acc.cooldown_until = 0.0
     acc.load()  # cookie 文件可能已更新，顺便重载
     return account_view(acc)
+
+
+# ---------- 账号导入 / 导出 ----------
+
+@app.get("/api/admin/accounts/export")
+def admin_export_accounts(_: str = Depends(verify_admin)):
+    """导出全部账号（含 cookie，可迁移到其他机器）。"""
+    return {
+        "version": VERSION,
+        "exported_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+        "accounts": [{
+            "seq": a.seq,
+            "email": a.email,
+            "proxy": a.proxy,
+            "cookie": a.cookie,
+        } for a in ACCOUNTS],
+    }
+
+
+class AccountImportBody(BaseModel):
+    accounts: list = []
+
+
+@app.post("/api/admin/accounts/import")
+def admin_import_accounts(body: AccountImportBody, _: str = Depends(verify_admin)):
+    """批量导入账号。已存在的 seq 跳过，返回导入结果。"""
+    imported, skipped, failed = 0, 0, []
+    for item in body.accounts:
+        if not isinstance(item, dict):
+            failed.append({"item": str(item)[:50], "reason": "格式错误"})
+            continue
+        seq = item.get("seq")
+        cookie = item.get("cookie") or ""
+        if seq is None or not cookie:
+            failed.append({"seq": seq, "reason": "缺少 seq 或 cookie"})
+            continue
+        if find_account(seq) is not None:
+            skipped += 1
+            continue
+        try:
+            # 复用添加逻辑：写 cookie 文件 + 建账号
+            n = 1
+            while os.path.exists(os.path.join(BASE, f"cookies{n}.json")):
+                n += 1
+            fname = f"cookies{n}.json"
+            pairs = [{"name": p.split("=", 1)[0].strip(),
+                      "value": p.split("=", 1)[1].strip(),
+                      "domain": ".genspark.ai", "path": "/"}
+                     for p in cookie.split(";") if "=" in p]
+            with open(os.path.join(BASE, fname), "w", encoding="utf-8") as f:
+                json.dump({"exported_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+                           "source": "admin_import", "cookies": pairs},
+                          f, ensure_ascii=False, indent=2)
+            acc = Account({"seq": seq, "email": item.get("email", ""),
+                           "cookie_file": fname,
+                           "proxy": item.get("proxy", "")})
+            with LOCK:
+                ACCOUNTS.append(acc)
+            imported += 1
+        except Exception as e:
+            failed.append({"seq": seq, "reason": str(e)[:100]})
+    if imported:
+        with LOCK:
+            save_accounts()
+    return {"ok": True, "imported": imported, "skipped": skipped,
+            "failed": failed}
+
+
+# ---------- 请求日志 ----------
+
+@app.get("/api/admin/logs")
+def admin_list_logs(model: str = "", status: str = "", account: str = "",
+                    q: str = "", limit: int = 50, offset: int = 0,
+                    _: str = Depends(verify_admin)):
+    with _REQLOG_LOCK:
+        logs = list(REQUEST_LOGS)
+    if model:
+        logs = [r for r in logs if r.get("model") == model]
+    if status:
+        logs = [r for r in logs if r.get("status") == status]
+    if account:
+        logs = [r for r in logs if str(r.get("account_seq")) == account
+                or account.lower() in (r.get("email") or "").lower()]
+    if q:
+        ql = q.lower()
+        logs = [r for r in logs
+                if ql in (r.get("model") or "").lower()
+                or ql in (r.get("email") or "").lower()
+                or ql in (r.get("error") or "").lower()]
+    total = len(logs)
+    limit = max(1, min(limit, 200))
+    return {"items": logs[offset:offset + limit], "total": total,
+            "limit": limit, "offset": offset}
+
+
+@app.delete("/api/admin/logs")
+def admin_clear_logs(_: str = Depends(verify_admin)):
+    with _REQLOG_LOCK:
+        n = len(REQUEST_LOGS)
+        REQUEST_LOGS.clear()
+    try:
+        if os.path.exists(LOG_FILE):
+            os.remove(LOG_FILE)
+    except Exception:
+        pass
+    return {"ok": True, "deleted": n}
+
+
+@app.get("/api/admin/logs/stats")
+def admin_log_stats(hours: int = 24, _: str = Depends(verify_admin)):
+    hours = max(1, min(hours, 24 * 30))
+    now = time.time()
+    cutoff = now - hours * 3600
+    with _REQLOG_LOCK:
+        logs = [r for r in REQUEST_LOGS if r.get("ts", 0) >= cutoff]
+    total = len(logs)
+    ok = sum(1 for r in logs if r["status"] == "ok")
+    lat = sorted(r.get("latency_ms", 0) for r in logs if r["status"] == "ok")
+
+    def pct(p):
+        if not lat:
+            return 0
+        return lat[min(len(lat) - 1, int(len(lat) * p))]
+
+    # 按小时分桶
+    bucket_s = 3600 if hours <= 48 else 86400
+    first = int(cutoff // bucket_s) * bucket_s
+    nbuckets = int((now - first) // bucket_s) + 1
+    series = [{"at": time.strftime("%m-%d %H:00" if bucket_s == 3600 else "%m-%d",
+                                   time.localtime(first + i * bucket_s)),
+               "requests": 0, "ok": 0, "error": 0}
+              for i in range(nbuckets)]
+    idx = {first + i * bucket_s: i for i in range(nbuckets)}
+    by_model, by_account = {}, {}
+    for r in logs:
+        b = idx.get(int(r.get("ts", 0) // bucket_s) * bucket_s)
+        if b is not None:
+            series[b]["requests"] += 1
+            if r["status"] == "ok":
+                series[b]["ok"] += 1
+            else:
+                series[b]["error"] += 1
+        m = r.get("model") or "unknown"
+        d = by_model.setdefault(m, {"key": m, "count": 0, "ok": 0, "error": 0})
+        d["count"] += 1
+        d["ok" if r["status"] == "ok" else "error"] += 1
+        a = r.get("email") or (f"#{r['account_seq']}" if r.get("account_seq")
+                               else "未知")
+        d = by_account.setdefault(a, {"key": a, "count": 0, "ok": 0,
+                                      "error": 0})
+        d["count"] += 1
+        d["ok" if r["status"] == "ok" else "error"] += 1
+    return {
+        "window": {"hours": hours},
+        "totals": {
+            "requests": total,
+            "ok": ok,
+            "error": total - ok,
+            "success_rate": round(ok / total * 100, 1) if total else 0.0,
+        },
+        "latency": {
+            "avg_ms": round(sum(lat) / len(lat)) if lat else 0,
+            "p50_ms": pct(0.5),
+            "p95_ms": pct(0.95),
+        },
+        "models": sorted(by_model.values(), key=lambda x: -x["count"])[:10],
+        "accounts": sorted(by_account.values(), key=lambda x: -x["count"])[:10],
+        "series": series,
+    }
+
+
+# ---------- 运行时日志 ----------
+
+@app.get("/api/admin/runtime-logs")
+def admin_runtime_logs(after: int = 0, limit: int = 200, level: str = "",
+                       q: str = "", _: str = Depends(verify_admin)):
+    with _RTLOG_LOCK:
+        logs = list(_RUNTIME_LOGS)
+    if after:
+        logs = [r for r in logs if r["id"] > after]
+    if level:
+        logs = [r for r in logs if r["level"] == level]
+    if q:
+        ql = q.lower()
+        logs = [r for r in logs if ql in r["message"].lower()]
+    limit = max(1, min(limit, 500))
+    return {"items": logs[-limit:], "total": len(_RUNTIME_LOGS)}
+
+
+# ---------- 运行时设置 ----------
+
+@app.get("/api/admin/settings")
+def admin_get_settings(_: str = Depends(verify_admin)):
+    return {"settings": dict(SETTINGS), "defaults": dict(DEFAULT_SETTINGS),
+            "models": MODELS}
+
+
+class SettingsPatchBody(BaseModel):
+    default_model: str = None
+    request_timeout_s: int = None
+    retry_attempts: int = None
+    cooldown_fail_s: int = None
+    cooldown_throttle_s: int = None
+    cooldown_not_login_s: int = None
+
+
+@app.patch("/api/admin/settings")
+def admin_patch_settings(body: SettingsPatchBody,
+                         _: str = Depends(verify_admin)):
+    if body.default_model is not None:
+        m = ALIAS.get(body.default_model, body.default_model)
+        if m not in MODELS:
+            raise HTTPException(status_code=400,
+                                detail=f"未知模型: {body.default_model}")
+        SETTINGS["default_model"] = m
+    for field, lo, hi in (("request_timeout_s", 10, 600),
+                          ("retry_attempts", 1, 10),
+                          ("cooldown_fail_s", 0, 86400),
+                          ("cooldown_throttle_s", 0, 86400),
+                          ("cooldown_not_login_s", 0, 86400)):
+        v = getattr(body, field)
+        if v is not None:
+            if not (lo <= v <= hi):
+                raise HTTPException(status_code=400,
+                                    detail=f"{field} 需在 {lo}~{hi} 之间")
+            SETTINGS[field] = v
+    _persist_settings()
+    return {"settings": dict(SETTINGS)}
+
+
+# ---------- 系统信息 / 访问信息 ----------
+
+@app.get("/api/admin/info")
+def admin_info(_: str = Depends(verify_admin)):
+    base = f"http://127.0.0.1:{PORT}"
+    return {
+        "version": VERSION,
+        "port": PORT,
+        "uptime_s": round(time.time() - START, 1),
+        "model_count": len(MODELS),
+        "account_count": len(ACCOUNTS),
+        "base_url": base,
+        "endpoints": {
+            "chat_completions": f"{base}/v1/chat/completions",
+            "models": f"{base}/v1/models",
+            "health": f"{base}/health",
+        },
+        "data_files": {
+            "accounts": MAP_FILE,
+            "config": _CONFIG_FILE,
+            "request_logs": LOG_FILE,
+        },
+    }
+
+
+# ---------- 模型测试 ----------
+
+class TestChatBody(BaseModel):
+    model: str = ""
+    content: str = "你好，请用一句话介绍自己"
+    account_seq: int = None
+
+
+@app.post("/api/admin/test-chat")
+def admin_test_chat(body: TestChatBody, _: str = Depends(verify_admin)):
+    """从后台直接发一条测试请求到上游，验证账号/模型可用性。"""
+    model = ALIAS.get(body.model, body.model) or SETTINGS["default_model"]
+    if model not in MODELS:
+        raise HTTPException(status_code=400, detail=f"未知模型: {body.model}")
+    acct = find_account(body.account_seq) if body.account_seq else pick()
+    if acct is None:
+        raise HTTPException(status_code=400,
+                            detail="没有可用账号（可能都在冷却）")
+    payload = {"model": model,
+               "messages": [{"role": "user", "content": body.content}]}
+    t0 = time.time()
+    try:
+        r = acct.session().post(
+            UPSTREAM, headers=acct.headers(), data=json.dumps(build_body(payload)),
+            proxies=acct.proxies, timeout=int(SETTINGS["request_timeout_s"]))
+    except Exception as e:
+        return {"ok": False, "account_seq": acct.seq, "email": acct.email,
+                "model": model,
+                "error": f"{type(e).__name__}: {e}",
+                "latency_ms": round((time.time() - t0) * 1000)}
+    latency = round((time.time() - t0) * 1000)
+    if r.status_code >= 400:
+        return {"ok": False, "account_seq": acct.seq, "email": acct.email,
+                "model": model, "error": f"上游 HTTP {r.status_code}",
+                "latency_ms": latency}
+    if "not login" in r.text:
+        return {"ok": False, "account_seq": acct.seq, "email": acct.email,
+                "model": model, "error": "cookie 已失效（not login）",
+                "latency_ms": latency}
+    content, joined, throttle, err = parse_sse(r.text)
+    if throttle:
+        return {"ok": False, "account_seq": acct.seq, "email": acct.email,
+                "model": model, "error": f"限流: {throttle}",
+                "latency_ms": latency}
+    return {"ok": True, "account_seq": acct.seq, "email": acct.email,
+            "model": model, "content": content or joined or "",
+            "latency_ms": latency}
 
 
 # ---------- 自动登录获取 Cookie（cloakbrowser） ----------
@@ -859,11 +1432,11 @@ def admin_page():
 
 if __name__ == "__main__":
     import uvicorn
-    print(f"[main] serving on :{PORT}", flush=True)
+    rlog("main", f"serving on :{PORT} (v{VERSION})")
     try:
         uvicorn.run(app, host="127.0.0.1", port=PORT, log_level="warning")
     except OSError as e:
         # 常见：端口已被占用（已在运行的实例）。双击时给出可读提示再退出。
-        print(f"[fatal] 启动失败: {e}", flush=True)
-        print(f"[fatal] 端口 {PORT} 可能已被占用（是否已有实例在运行？）", flush=True)
+        rlog("fatal", f"启动失败: {e}")
+        rlog("fatal", f"端口 {PORT} 可能已被占用（是否已有实例在运行？）")
         sys.exit(1)
