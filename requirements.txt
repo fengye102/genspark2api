@@ -1,0 +1,8 @@
+# 主程序依赖（Linux 服务器 / Docker 部署用这些就够了）
+fastapi>=0.110
+uvicorn[standard]>=0.29
+pydantic>=2
+curl_cffi>=0.7
+
+# 可选：Windows 桌面环境一键抓取 Cookie 才需要，服务器无需安装
+# cloakbrowser

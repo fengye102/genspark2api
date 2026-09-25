@@ -38,9 +38,15 @@ if getattr(sys, 'frozen', False):
     BASE = os.path.dirname(sys.executable)
 else:
     BASE = os.path.dirname(os.path.abspath(__file__))
-MAP_FILE = os.environ.get("GS_ACCOUNTS", os.path.join(BASE, "accounts.json"))
+# 数据目录：accounts.json / config.json / cookies*.json / logs / 抓号 profile。
+# Linux/容器部署时用 GS_DATA_DIR 指向挂载卷即可持久化，代码目录保持只读。
+DATA = os.environ.get("GS_DATA_DIR", BASE)
+os.makedirs(DATA, exist_ok=True)
+MAP_FILE = os.environ.get("GS_ACCOUNTS", os.path.join(DATA, "accounts.json"))
 PORT = int(os.environ.get("GS_PORT", "8899"))
-VERSION = "1.1.1"
+# 监听地址：默认仅本机回环（Windows 双击场景安全）；容器/服务器用 GS_HOST=0.0.0.0
+HOST = os.environ.get("GS_HOST", "127.0.0.1")
+VERSION = "1.2.0"
 
 UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
       "(KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36")
@@ -118,7 +124,7 @@ class _RuntimeLogHandler(logging.Handler):
 logging.getLogger().addHandler(_RuntimeLogHandler())
 
 # ---------- 请求日志：内存环形缓冲 + JSONL 持久化 ----------
-LOG_DIR = os.path.join(BASE, "logs")
+LOG_DIR = os.path.join(DATA, "logs")
 LOG_FILE = os.path.join(LOG_DIR, "requests.jsonl")
 REQUEST_LOGS = deque(maxlen=1000)   # 最新在最左
 _REQLOG_LOCK = threading.Lock()
@@ -184,12 +190,15 @@ class Account:
         self.load()
 
     def load(self):
-        if not self.cookie_file or not os.path.exists(self.cookie_file):
+        path = self.cookie_file
+        if path and not os.path.isabs(path):
+            path = os.path.join(DATA, path)
+        if not path or not os.path.exists(path):
             # 没有文件时保留已有 cookie（可能是直接赋值/导入的）
             if not self.cookie:
                 self.cookie = ""
             return
-        d = json.load(open(self.cookie_file, encoding="utf-8"))
+        d = json.load(open(path, encoding="utf-8"))
         self.cookie = "; ".join(f"{c['name']}={c['value']}"
                                 for c in d.get("cookies", []) if c.get("name"))
 
@@ -232,7 +241,7 @@ class Account:
 
 def _next_cookie_fname():
     n = 1
-    while os.path.exists(os.path.join(BASE, f"cookies{n}.json")):
+    while os.path.exists(os.path.join(DATA, f"cookies{n}.json")):
         n += 1
     return f"cookies{n}.json"
 
@@ -240,7 +249,7 @@ def _next_cookie_fname():
 def _write_cookie_file(pairs, source):
     """把 cookie 列表写到下一个空闲的 cookiesN.json，返回文件名。"""
     fname = _next_cookie_fname()
-    with open(os.path.join(BASE, fname), "w", encoding="utf-8") as f:
+    with open(os.path.join(DATA, fname), "w", encoding="utf-8") as f:
         json.dump({"exported_at": time.strftime("%Y-%m-%d %H:%M:%S"),
                    "source": source, "cookies": pairs},
                   f, ensure_ascii=False, indent=2)
@@ -251,14 +260,14 @@ def _prune_cookie_files():
     """删除没有账号引用的 cookiesN.json（只认数字编号文件名，避免误删）。"""
     referenced = {a.cookie_file for a in ACCOUNTS if a.cookie_file}
     removed = 0
-    for name in os.listdir(BASE):
+    for name in os.listdir(DATA):
         if not name.startswith("cookies") or not name.endswith(".json"):
             continue
         stem = name[len("cookies"):-len(".json")]
         if not stem.isdigit() or name in referenced:
             continue
         try:
-            os.remove(os.path.join(BASE, name))
+            os.remove(os.path.join(DATA, name))
             removed += 1
         except OSError:
             pass
@@ -324,7 +333,7 @@ def save_accounts():
 
 
 # ---- 管理员密码：优先环境变量，其次配置文件，最后默认值 ----
-_CONFIG_FILE = os.path.join(BASE, "config.json")
+_CONFIG_FILE = os.path.join(DATA, "config.json")
 
 
 def _load_config():
@@ -917,7 +926,7 @@ def admin_add_account(body: AccountCreateBody, _: str = Depends(verify_admin)):
     raw_cookie = d.pop("cookie", "")
     if d.get("cookie_file") and not raw_cookie:
         # 复用已存在的 cookiesN.json（如一键抓取的结果），不重复写盘
-        if not os.path.exists(os.path.join(BASE, d["cookie_file"])):
+        if not os.path.exists(os.path.join(DATA, d["cookie_file"])):
             raise HTTPException(status_code=400,
                                 detail=f"Cookie 文件不存在: {d['cookie_file']}")
         acc = Account(d)
@@ -1291,7 +1300,7 @@ def _run_login_capture():
                              "error": "未安装 cloakbrowser（pip install cloakbrowser）"})
         return
 
-    profile = os.path.join(BASE, "gs_login_profile")
+    profile = os.path.join(DATA, "gs_login_profile")
     os.makedirs(profile, exist_ok=True)
     browser = None
     try:
@@ -1410,6 +1419,46 @@ def admin_genspark_login_url(_: str = Depends(verify_admin)):
     return {"url": "https://www.genspark.ai/agents?type=ai_chat"}
 
 
+@app.get("/api/admin/latest-import-cookie")
+def admin_latest_import_cookie(since: float = 0, _: str = Depends(verify_admin)):
+    """返回最近一次 bookmarklet 导入的 cookie（前端加账号弹窗轮询用）。"""
+    best = None
+    try:
+        names = os.listdir(DATA)
+    except OSError:
+        names = []
+    for name in names:
+        if not (name.startswith("cookies") and name.endswith(".json")):
+            continue
+        stem = name[len("cookies"):-len(".json")]
+        if not stem.isdigit():
+            continue
+        path = os.path.join(DATA, name)
+        try:
+            mtime = os.path.getmtime(path)
+        except OSError:
+            continue
+        if mtime < since:
+            continue
+        if best is None or mtime > best[0]:
+            best = (mtime, path, name)
+    if not best:
+        return {"ok": False}
+    try:
+        d = json.load(open(best[1], encoding="utf-8"))
+    except Exception:
+        return {"ok": False}
+    if d.get("source") != "browser_tab_import":
+        return {"ok": False}
+    pairs = d.get("cookies", [])
+    if not any(c.get("name") == "session_id" for c in pairs if isinstance(c, dict)):
+        return {"ok": False}
+    cookie = "; ".join(f"{c['name']}={c['value']}"
+                       for c in pairs if c.get("name"))
+    return {"ok": True, "cookie_file": best[2], "cookie": cookie,
+            "mtime": best[0], "count": len(pairs)}
+
+
 @app.post("/api/admin/import-cookie")
 def admin_import_cookie(body: CookieImportBody, _: str = Depends(verify_admin)):
     """接收浏览器端 POST 回来的 cookie 列表，保存为 cookiesN.json 文件。"""
@@ -1445,9 +1494,16 @@ def admin_page():
 
 if __name__ == "__main__":
     import uvicorn
-    rlog("main", f"serving on :{PORT} (v{VERSION})")
+    rlog("main", f"serving on {HOST}:{PORT} (v{VERSION})")
+    # Windows 双击场景：启动后自动打开本机浏览器进入后台。
+    # 服务器/容器（GS_HOST=0.0.0.0 或 GS_NO_BROWSER=1）不打开。
+    if HOST in ("127.0.0.1", "localhost", "::1") \
+            and os.environ.get("GS_NO_BROWSER") != "1":
+        import webbrowser
+        threading.Timer(
+            1.2, lambda: webbrowser.open(f"http://127.0.0.1:{PORT}/")).start()
     try:
-        uvicorn.run(app, host="127.0.0.1", port=PORT, log_level="warning")
+        uvicorn.run(app, host=HOST, port=PORT, log_level="warning")
     except OSError as e:
         # 常见：端口已被占用（已在运行的实例）。双击时给出可读提示再退出。
         rlog("fatal", f"启动失败: {e}")

@@ -1128,6 +1128,11 @@
         </div>
         <textarea id="addCookie" rows="3" placeholder="登录 Genspark 后，Cookie 会自动填入；或手动粘贴" style="width:100%;resize:vertical;font-family:monospace;font-size:12px"></textarea>
         <div id="fetchStatus" class="fetch-status" hidden></div>
+        <div style="display:flex;gap:8px;margin-top:8px">
+          <button type="button" class="btn btn-ghost" onclick="copyImportSnippet()" style="white-space:nowrap">
+            <i data-lucide="terminal" style="width:14px;height:14px"></i>控制台导入（无桌面/服务器）
+          </button>
+        </div>
       </div>
       <div class="form-group">
         <label for="addProxy">代理（可选）</label>
@@ -1630,6 +1635,7 @@
     $('#addForm').reset();
     _capturedCookieFile = '';
     stopCapturePoll();
+    stopImportPoll();
     $('#fetchStatus').hidden = true;
     $('#fetchStatus').className = 'fetch-status';
   }
@@ -1637,6 +1643,8 @@
   /* ---------- 自动获取 Cookie（cloakbrowser 自动登录） ---------- */
   var _captureTimer = null;
   var _capturedCookieFile = '';
+  var _importTimer = null;
+  var _importSince = 0;
 
   function showFetchStatus(msg, cls) {
     var el = $('#fetchStatus');
@@ -1690,6 +1698,43 @@
       showFetchStatus('无法读取剪贴板，请手动粘贴到下方文本框', 'error');
       $('#addCookie').focus();
     }
+  }
+
+  async function copyImportSnippet() {
+    // 生成在 Genspark 页面控制台执行的导入脚本（服务器/无桌面环境用）
+    var snippet = '(function(){var cookies=document.cookie.split(\';\').map(function(c){var p=c.trim().split(\'=\');return{name:p[0],value:p.slice(1).join(\'=\'),domain:\'.genspark.ai\',path:\'/\'};});fetch('
+      + JSON.stringify(location.origin + '/api/admin/import-cookie')
+      + ',{method:\'POST\',headers:{\'Content-Type\':\'application/json\',\'Authorization\':\'Bearer \'+' + JSON.stringify(getToken()) + '},'
+      + 'body:JSON.stringify({cookies:cookies})}).then(function(r){return r.json();}).then(function(r){'
+      + 'if(r.ok){alert(\'Cookie \u5bfc\u5165\u6210\u529f\uff01\u56de\u5230\u7ba1\u7406\u9762\u677f\u70b9\u51fb\u6dfb\u52a0\')}'
+      + 'else{alert(\'\u5bfc\u5165\u5931\u8d25\uff1a\'+(r.detail||\'\'))}}).catch(function(e){alert(\'\u8bf7\u6c42\u5931\u8d25\uff1a\'+e.message)});})()';
+    try {
+      await navigator.clipboard.writeText(snippet);
+      showFetchStatus('已复制导入代码。请到已登录 Genspark 的页面按 F12 → 控制台粘贴执行，成功后此处自动填入。', 'done');
+      _importSince = Date.now() / 1000;
+      stopImportPoll();
+      _importTimer = setInterval(pollLatestImport, 2000);
+    } catch (e) {
+      showFetchStatus('复制失败，请手动复制：' + snippet, 'error');
+    }
+  }
+
+  function stopImportPoll() {
+    if (_importTimer) { clearInterval(_importTimer); _importTimer = null; }
+  }
+
+  async function pollLatestImport() {
+    // 复制导入代码后最多轮询 3 分钟
+    if (Date.now() / 1000 - _importSince > 180) { stopImportPoll(); return; }
+    try {
+      var r = await api('/api/admin/latest-import-cookie?since=' + _importSince.toFixed(0));
+      if (r && r.ok && r.cookie) {
+        stopImportPoll();
+        _capturedCookieFile = r.cookie_file || '';
+        $('#addCookie').value = r.cookie;
+        showFetchStatus('✅ 已收到浏览器导入的 Cookie（' + r.count + ' 项，含 session_id），点击「添加」即可', 'done');
+      }
+    } catch (e) { /* 忽略轮询错误 */ }
   }
 
   async function handleAddAccount(e) {
@@ -2235,6 +2280,7 @@
   window.deleteAccount = deleteAccount;
   window.startCookieCapture = startCookieCapture;
   window.pasteCookie = pasteCookie;
+  window.copyImportSnippet = copyImportSnippet;
   window.changePassword = changePassword;
   window.createKey = createKey;
   window.copyNewKey = copyNewKey;

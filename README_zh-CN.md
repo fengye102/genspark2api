@@ -147,6 +147,59 @@ $env:GS_API_KEY = "sk-fixedkeyyouwant"
 
 ---
 
+## Linux 服务器部署
+
+程序是纯 Python 应用，Linux 上直接跑源码即可，无需打包 exe。两种部署方式：
+
+### 方式 A：Docker（推荐）
+
+```bash
+docker compose up -d --build
+docker logs -f genspark2api
+```
+
+- 数据（账号 / Cookie / 配置 / 日志）自动持久化到宿主机 `./data/`。
+- 改密码：在 `docker-compose.yml` 里设置 `GS_ADMIN_PASSWORD`，或登录后台 → 设置 里改。
+
+也可以不用 compose：
+
+```bash
+docker build -t genspark2api .
+docker run -d --name genspark2api -p 8899:8899 \
+  -v $(pwd)/data:/data -e GS_ADMIN_PASSWORD=change-me genspark2api
+```
+
+### 方式 B：systemd 直跑
+
+```bash
+sudo mkdir -p /opt/genspark2api /var/lib/genspark2api
+sudo cp genspark2api.py requirements.txt /opt/genspark2api/
+sudo cp -r static /opt/genspark2api/
+cd /opt/genspark2api && sudo python3 -m venv venv
+sudo venv/bin/pip install -r requirements.txt
+
+sudo useradd -r -s /usr/sbin/nologin genspark2api
+sudo chown -R genspark2api:genspark2api /var/lib/genspark2api
+sudo cp deploy/genspark2api.service /etc/systemd/system/
+sudo systemctl enable --now genspark2api
+```
+
+### 服务器上怎么添加账号？
+
+服务器没有桌面，「一键获取 Cookie」不可用（后台点它会提示未安装 cloakbrowser）。正确做法是在**你自己的电脑浏览器**里操作：
+
+1. 登录 [Genspark](https://www.genspark.ai)。
+2. 在服务器后台管理界面（`http://你的服务器IP:8899`）的「添加账号」弹窗里，复制 bookmarklet（控制台小书签代码）。
+3. 回到 Genspark 页面，F12 打开控制台，粘贴执行 —— Cookie 会直接推送到服务器。
+
+### 服务器部署注意
+
+- Cookie 可能和出口 IP / 风控绑定，服务器（尤其海外机房）调用可能触发验证，部署后先在「模型测试」页实测一次。
+- 公网暴露时务必改管理员密码、只放行必要端口；建议放 Nginx/Caddy 后面套 HTTPS。
+- 环境变量 `GS_DATA_DIR` 指定数据目录、`GS_HOST=0.0.0.0` 对外开放（容器和 systemd 单元已配好）。
+
+---
+
 ## 运行时文件说明
 
 exe 所在目录会自动创建这些文件：

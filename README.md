@@ -193,6 +193,8 @@ All settings are optional; defaults work for local use.
 | Source | Name | Purpose |
 |---|---|---|
 | env | `GS_PORT` | Listen port (default `8899`) |
+| env | `GS_HOST` | Bind address (default `127.0.0.1`; use `0.0.0.0` for containers/servers) |
+| env | `GS_DATA_DIR` | Data directory holding accounts/cookies/config/logs (default: app dir) |
 | env | `GS_ACCOUNTS` | Path to the account-pool JSON (default `./accounts.json`) |
 | env | `GS_PROXY` | Fallback egress proxy for accounts without their own `proxy` |
 | env | `GS_ADMIN_PASSWORD` | Admin password (overrides `config.json`, default `admin123`) |
@@ -201,6 +203,59 @@ All settings are optional; defaults work for local use.
 | `config.json` | `api_keys` | API keys for `/v1/*` (managed from the API 密钥 page) |
 
 `config.json` is created automatically on first run / first change.
+
+---
+
+## Linux server deployment
+
+The app is plain Python — no exe needed on Linux. Two options:
+
+### Option A — Docker (recommended)
+
+```bash
+docker compose up -d --build
+docker logs -f genspark2api
+```
+
+All data (accounts / cookies / config / logs) persists in `./data/` on the host.
+Set `GS_ADMIN_PASSWORD` in `docker-compose.yml`, or change it later in 设置.
+
+Without compose:
+
+```bash
+docker build -t genspark2api .
+docker run -d --name genspark2api -p 8899:8899 \
+  -v $(pwd)/data:/data -e GS_ADMIN_PASSWORD=change-me genspark2api
+```
+
+### Option B — systemd
+
+```bash
+sudo mkdir -p /opt/genspark2api /var/lib/genspark2api
+sudo cp genspark2api.py requirements.txt -t /opt/genspark2api/
+sudo cp -r static /opt/genspark2api/
+cd /opt/genspark2api && sudo python3 -m venv venv
+sudo venv/bin/pip install -r requirements.txt
+
+sudo useradd -r -s /usr/sbin/nologin genspark2api
+sudo chown -R genspark2api:genspark2api /var/lib/genspark2api
+sudo cp deploy/genspark2api.service /etc/systemd/system/
+sudo systemctl enable --now genspark2api
+```
+
+### Adding accounts on a headless server
+
+The in-app browser capture (cloakbrowser) needs a desktop and is **not available on servers**.
+Use the console-import flow instead, from an admin session on your own machine:
+
+1. Open the admin panel (`http://<server-ip>:8899`) → 添加账号 → click **控制台导入（无桌面/服务器）** to copy the import snippet.
+2. In a tab where you are logged into [Genspark](https://www.genspark.ai), press F12 → Console → paste → Enter.
+3. The cookies are pushed straight to the server and auto-filled into the dialog within ~2 s. Click 添加.
+
+### Server notes
+
+- Cookies may be bound to egress IP / risk control. After deploying on a VPS (especially overseas), run one request from 模型测试 before relying on it.
+- If exposed to the public internet: change the admin password, whitelist ports, and put the service behind Nginx/Caddy with HTTPS.
 
 ---
 

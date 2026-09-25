@@ -1,0 +1,16 @@
+services:
+  genspark2api:
+    build: .
+    container_name: genspark2api
+    restart: unless-stopped
+    ports:
+      - "8899:8899"
+    volumes:
+      # 账号 / Cookie / 配置 / 请求日志 持久化到宿主机 ./data
+      - ./data:/data
+    environment:
+      # 管理员密码建议用环境变量覆盖（默认 admin123，登录后台后可改）
+      # GS_ADMIN_PASSWORD: "change-me"
+      # 账号出口代理（可选）
+      # GS_PROXY: "http://127.0.0.1:7890"
+      TZ: Asia/Shanghai

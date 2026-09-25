@@ -1,0 +1,20 @@
+# systemd 单元——不装 Docker 时用，放置于 /etc/systemd/system/genspark2api.service
+# 前置：python3.10+，venv 在 /opt/genspark2api/venv，数据目录 /var/lib/genspark2api
+[Unit]
+Description=genspark2api - Genspark to OpenAI-compatible API proxy
+After=network.target
+
+[Service]
+Type=simple
+User=genspark2api
+WorkingDirectory=/opt/genspark2api
+Environment=GS_DATA_DIR=/var/lib/genspark2api
+Environment=GS_HOST=0.0.0.0
+Environment=GS_PORT=8899
+# Environment=GS_ADMIN_PASSWORD=change-me
+ExecStart=/opt/genspark2api/venv/bin/python genspark2api.py
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
