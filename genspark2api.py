@@ -40,7 +40,7 @@ else:
     BASE = os.path.dirname(os.path.abspath(__file__))
 MAP_FILE = os.environ.get("GS_ACCOUNTS", os.path.join(BASE, "accounts.json"))
 PORT = int(os.environ.get("GS_PORT", "8899"))
-VERSION = "1.1.0"
+VERSION = "1.1.1"
 
 UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
       "(KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36")
@@ -230,6 +230,41 @@ class Account:
         }
 
 
+def _next_cookie_fname():
+    n = 1
+    while os.path.exists(os.path.join(BASE, f"cookies{n}.json")):
+        n += 1
+    return f"cookies{n}.json"
+
+
+def _write_cookie_file(pairs, source):
+    """把 cookie 列表写到下一个空闲的 cookiesN.json，返回文件名。"""
+    fname = _next_cookie_fname()
+    with open(os.path.join(BASE, fname), "w", encoding="utf-8") as f:
+        json.dump({"exported_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+                   "source": source, "cookies": pairs},
+                  f, ensure_ascii=False, indent=2)
+    return fname
+
+
+def _prune_cookie_files():
+    """删除没有账号引用的 cookiesN.json（只认数字编号文件名，避免误删）。"""
+    referenced = {a.cookie_file for a in ACCOUNTS if a.cookie_file}
+    removed = 0
+    for name in os.listdir(BASE):
+        if not name.startswith("cookies") or not name.endswith(".json"):
+            continue
+        stem = name[len("cookies"):-len(".json")]
+        if not stem.isdigit() or name in referenced:
+            continue
+        try:
+            os.remove(os.path.join(BASE, name))
+            removed += 1
+        except OSError:
+            pass
+    return removed
+
+
 def load_accounts():
     if not os.path.exists(MAP_FILE):
         # 首次运行（如双击 exe）没有配置文件时，创建空配置而不是崩溃。
@@ -255,6 +290,9 @@ def load_accounts():
 ACCOUNTS = load_accounts()
 rlog("init", f"加载 {len(ACCOUNTS)} 个账号: "
              f"{[(a.seq, a.email[:22]) for a in ACCOUNTS]}")
+_pruned = _prune_cookie_files()
+if _pruned:
+    rlog("init", f"清理 {_pruned} 个未被账号引用的 cookie 文件")
 
 
 def save_accounts():
@@ -877,23 +915,25 @@ def admin_add_account(body: AccountCreateBody, _: str = Depends(verify_admin)):
         raise HTTPException(status_code=409, detail=f"seq {body.seq} 已存在")
     d = body.model_dump()
     raw_cookie = d.pop("cookie", "")
-    acc = Account(d)
-    if raw_cookie:
-        # 直接传入 cookie 字符串：写成文件，同时赋值给运行中的账号
-        n = 1
-        while os.path.exists(os.path.join(BASE, f"cookies{n}.json")):
-            n += 1
-        fname = f"cookies{n}.json"
-        fpath = os.path.join(BASE, fname)
-        pairs = [{"name": p.split("=", 1)[0].strip(), "value": p.split("=", 1)[1].strip(),
-                  "domain": ".genspark.ai", "path": "/"}
-                 for p in raw_cookie.split(";") if "=" in p]
-        with open(fpath, "w", encoding="utf-8") as f:
-            json.dump({"exported_at": time.strftime("%Y-%m-%d %H:%M:%S"),
-                       "source": "admin_panel_paste", "cookies": pairs},
-                      f, ensure_ascii=False, indent=2)
-        acc.cookie_file = fname
-        acc.cookie = raw_cookie
+    if d.get("cookie_file") and not raw_cookie:
+        # 复用已存在的 cookiesN.json（如一键抓取的结果），不重复写盘
+        if not os.path.exists(os.path.join(BASE, d["cookie_file"])):
+            raise HTTPException(status_code=400,
+                                detail=f"Cookie 文件不存在: {d['cookie_file']}")
+        acc = Account(d)
+        if not acc.cookie:
+            raise HTTPException(status_code=400,
+                                detail=f"Cookie 文件为空或缺少有效条目: {d['cookie_file']}")
+    else:
+        d["cookie_file"] = ""
+        acc = Account(d)
+        if raw_cookie:
+            # 直接传入 cookie 字符串：写成文件，同时赋值给运行中的账号
+            pairs = [{"name": p.split("=", 1)[0].strip(), "value": p.split("=", 1)[1].strip(),
+                      "domain": ".genspark.ai", "path": "/"}
+                     for p in raw_cookie.split(";") if "=" in p]
+            acc.cookie_file = _write_cookie_file(pairs, "admin_panel_paste")
+            acc.cookie = raw_cookie
     with LOCK:
         ACCOUNTS.append(acc)
         save_accounts()
@@ -908,7 +948,8 @@ def admin_delete_account(seq: int, _: str = Depends(verify_admin)):
     with LOCK:
         ACCOUNTS.remove(acc)
         save_accounts()
-    return {"ok": True, "deleted": seq}
+        removed = _prune_cookie_files()
+    return {"ok": True, "deleted": seq, "cookie_files_removed": removed}
 
 
 @app.post("/api/admin/accounts/{seq}/cooldown")
@@ -970,18 +1011,11 @@ def admin_import_accounts(body: AccountImportBody, _: str = Depends(verify_admin
             continue
         try:
             # 复用添加逻辑：写 cookie 文件 + 建账号
-            n = 1
-            while os.path.exists(os.path.join(BASE, f"cookies{n}.json")):
-                n += 1
-            fname = f"cookies{n}.json"
             pairs = [{"name": p.split("=", 1)[0].strip(),
                       "value": p.split("=", 1)[1].strip(),
                       "domain": ".genspark.ai", "path": "/"}
                      for p in cookie.split(";") if "=" in p]
-            with open(os.path.join(BASE, fname), "w", encoding="utf-8") as f:
-                json.dump({"exported_at": time.strftime("%Y-%m-%d %H:%M:%S"),
-                           "source": "admin_import", "cookies": pairs},
-                          f, ensure_ascii=False, indent=2)
+            fname = _write_cookie_file(pairs, "admin_import")
             acc = Account({"seq": seq, "email": item.get("email", ""),
                            "cookie_file": fname,
                            "proxy": item.get("proxy", "")})
@@ -1317,27 +1351,18 @@ def _run_login_capture():
         except Exception:
             pass
 
-        # 写成 cookiesN.json
-        n = 1
-        while os.path.exists(os.path.join(BASE, f"cookies{n}.json")):
-            n += 1
-        fname = f"cookies{n}.json"
-        out = {
-            "exported_at": time.strftime("%Y-%m-%d %H:%M:%S"),
-            "source": "cloakbrowser_auto_login",
-            "cookies": [
-                {"name": c.get("name"), "value": c.get("value"),
-                 "domain": c.get("domain"), "path": c.get("path"),
-                 "httpOnly": c.get("httpOnly"), "secure": c.get("secure"),
-                 "sameSite": c.get("sameSite")}
-                for c in cookies
-            ],
-        }
-        with open(os.path.join(BASE, fname), "w", encoding="utf-8") as f:
-            json.dump(out, f, ensure_ascii=False, indent=2)
+        # 写成 cookiesN.json（保留浏览器侧附加字段，便于排查）
+        out_cookies = [
+            {"name": c.get("name"), "value": c.get("value"),
+             "domain": c.get("domain"), "path": c.get("path"),
+             "httpOnly": c.get("httpOnly"), "secure": c.get("secure"),
+             "sameSite": c.get("sameSite")}
+            for c in cookies
+        ]
+        fname = _write_cookie_file(out_cookies, "cloakbrowser_auto_login")
 
         cookie_str = "; ".join(f"{c['name']}={c['value']}"
-                               for c in out["cookies"] if c.get("name"))
+                               for c in out_cookies if c.get("name"))
         with _CAPTURE_LOCK:
             _CAPTURE.update({"status": "done", "cookie": cookie_str,
                              "cookie_file": fname, "email": email or ""})
@@ -1394,19 +1419,7 @@ def admin_import_cookie(body: CookieImportBody, _: str = Depends(verify_admin)):
     names = {c.get("name") for c in body.cookies if isinstance(c, dict)}
     if "session_id" not in names:
         raise HTTPException(status_code=400, detail="缺少 session_id，请确认已在 Genspark 登录")
-    # 找一个不冲突的文件名
-    n = 1
-    while os.path.exists(os.path.join(BASE, f"cookies{n}.json")):
-        n += 1
-    fname = f"cookies{n}.json"
-    fpath = os.path.join(BASE, fname)
-    cookie_data = {
-        "exported_at": time.strftime("%Y-%m-%d %H:%M:%S"),
-        "source": "browser_tab_import",
-        "cookies": body.cookies,
-    }
-    with open(fpath, "w", encoding="utf-8") as f:
-        json.dump(cookie_data, f, ensure_ascii=False, indent=2)
+    fname = _write_cookie_file(body.cookies, "browser_tab_import")
     return {"ok": True, "cookie_file": fname, "count": len(body.cookies)}
 
 

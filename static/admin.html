@@ -672,7 +672,7 @@
       </button>
     </nav>
     <div class="sidebar-footer">
-      <div class="sidebar-version">版本 v1.1.0</div>
+<div class="sidebar-version">版本 v1.1.1</div>
       <button id="btnLogout" class="btn-logout">
         <i data-lucide="log-out"></i><span class="nav-label">退出登录</span>
       </button>
@@ -1082,7 +1082,7 @@
           <div class="about-card glass">
             <h3>Genspark2API</h3>
             <p>将 Genspark AI 服务封装为 OpenAI 兼容接口的中转服务，支持多账号轮换、限流冷却与代理配置。</p>
-            <p style="margin-top:12px">版本 <span id="aboutVersion">v1.1.0</span></p>
+            <p style="margin-top:12px">版本 <span id="aboutVersion">v1.1.1</span></p>
             <p class="muted" style="font-size:12px;margin-top:6px">已稳定运行 <span id="aboutUptime" class="mono">-</span></p>
           </div>
           <div class="about-card glass">
@@ -1628,6 +1628,7 @@
   function closeAddModal() {
     $('#modalOverlay').hidden = true;
     $('#addForm').reset();
+    _capturedCookieFile = '';
     stopCapturePoll();
     $('#fetchStatus').hidden = true;
     $('#fetchStatus').className = 'fetch-status';
@@ -1635,6 +1636,7 @@
 
   /* ---------- 自动获取 Cookie（cloakbrowser 自动登录） ---------- */
   var _captureTimer = null;
+  var _capturedCookieFile = '';
 
   function showFetchStatus(msg, cls) {
     var el = $('#fetchStatus');
@@ -1649,6 +1651,7 @@
 
   async function startCookieCapture() {
     try {
+      _capturedCookieFile = '';
       await api('/api/admin/start-login-capture', { method: 'POST', body: {} });
       showFetchStatus('已打开登录窗口，请在弹出的浏览器里登录 Genspark…（登录成功后自动获取，无需操作）', '');
       stopCapturePoll();
@@ -1663,6 +1666,7 @@
       var r = await api('/api/admin/login-capture-status');
       if (r.status === 'done' && r.cookie) {
         stopCapturePoll();
+        _capturedCookieFile = r.cookie_file || '';
         $('#addCookie').value = r.cookie;
         if (r.email && !$('#addEmail').value) { $('#addEmail').value = r.email; }
         showFetchStatus('✅ 已获取 Cookie（含 session_id），点击「添加」即可', 'done');
@@ -1701,8 +1705,11 @@
       return;
     }
     var body = { seq: seq, email: email, cookie_file: cookieFile, proxy: proxy };
-    /* 如果输入的是 cookie 字符串（非文件路径），转为 cookie 字段让后端自动写文件 */
-    if (cookieFile.indexOf('=') !== -1 && !/\.json$/i.test(cookieFile)) {
+    /* 一键抓取已成功：直接引用后端已保存的文件，不重复写盘 */
+    if (_capturedCookieFile) {
+      body.cookie_file = _capturedCookieFile;
+    } else if (cookieFile.indexOf('=') !== -1 && !/\.json$/i.test(cookieFile)) {
+      /* 输入的是 cookie 字符串（非文件路径），转为 cookie 字段让后端自动写文件 */
       body.cookie = cookieFile;
       body.cookie_file = '';
     }
@@ -2198,6 +2205,7 @@
       if (e.target === this) closeAddModal();
     });
     $('#importFile').addEventListener('change', handleImportFile);
+    $('#addCookie').addEventListener('input', function () { _capturedCookieFile = ''; });
     $('#rtAutoRefresh').addEventListener('change', handleRtAutoRefresh);
     $('#fltQ').addEventListener('keydown', function (e) {
       if (e.key === 'Enter') applyLogFilter();
