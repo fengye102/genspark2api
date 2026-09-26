@@ -1310,13 +1310,19 @@ def _run_login_capture():
             user_data_dir=profile, headless=False, stealth_args=True,
             viewport={"width": 1280, "height": 840},
         )
+        # 清掉上次残留登录态，保证每次添加账号都从登出状态开始，
+        # 否则 profile 里的旧 session 会让浏览器一打开就是已登录、瞬间抓取关闭。
+        try:
+            browser.clear_cookies()
+        except Exception:
+            pass
         page = browser.pages[0] if browser.pages else browser.new_page()
         page.goto("https://www.genspark.ai/agents?type=ai_chat",
                   wait_until="domcontentloaded", timeout=60000)
         time.sleep(5)
 
-        # 轮询登录态，最多 5 分钟
-        deadline = time.time() + 300
+        # 轮询登录态，最多 10 分钟（注册新号可能需要更久）
+        deadline = time.time() + 600
         logged = False
         while time.time() < deadline:
             try:
@@ -1335,7 +1341,7 @@ def _run_login_capture():
 
         if not logged:
             with _CAPTURE_LOCK:
-                _CAPTURE.update({"status": "error", "error": "等待登录超时（5 分钟）"})
+                _CAPTURE.update({"status": "error", "error": "等待登录超时（10 分钟）"})
             return
 
         # 导出全部 cookie（含 httpOnly）
