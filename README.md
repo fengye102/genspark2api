@@ -11,7 +11,7 @@ cookies; the proxy itself is pure HTTP.
 
 ## 🚀 Quick link
 
-[📥 Download v1.1.0 Windows exe](https://github.com/fengye102/genspark2api/releases/tag/v1.1.0)
+[📥 Download latest Windows exe](https://github.com/fengye102/genspark2api/releases/latest)
 
 [中文快速指南](README_zh-CN.md) — 双击即用，一键获取 Cookie
 
@@ -112,7 +112,9 @@ The bridge serves a browser-based admin panel at the root URL:
 http://127.0.0.1:8899/
 ```
 
-Default password is `admin123`. Override it before exposing the port beyond localhost:
+⚠️ The default password is `admin123` (the bundled deploy templates ship `change-me` —
+equally unsafe). **Set a strong password before exposing the port**: a reachable panel lets
+anyone manage accounts, export cookies, and issue API keys.
 
 ```bash
 # PowerShell
@@ -179,6 +181,10 @@ python -m PyInstaller --onefile --console --name genspark2api ^
 The cloakbrowser/playwright flags are required so the panel's **获取 Cookie（自动登录）**
 button works inside the exe.
 
+Official release builds are produced by CI on every tag push
+(`.github/workflows/build-release.yml`), together with a `SHA256` checksum file —
+no manual packaging needed.
+
 Run `dist\genspark2api.exe` next to your `accounts.json` (and `cookies*.json` files).
 Runtime state lives next to the exe: `accounts.json`, `cookies*.json`, `config.json`
 (admin password + API keys), and the `gs_login_profile/` browser profile. It listens on
@@ -218,7 +224,8 @@ docker logs -f genspark2api
 ```
 
 All data (accounts / cookies / config / logs) persists in `./data/` on the host.
-Set `GS_ADMIN_PASSWORD` in `docker-compose.yml`, or change it later in 设置.
+⚠️ **Set `GS_ADMIN_PASSWORD` in `docker-compose.yml` before opening the port** (the shipped
+template value `change-me` is not a real password); you can still change it later under 设置.
 
 Without compose:
 

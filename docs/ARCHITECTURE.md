@@ -37,7 +37,7 @@ upstream account credential; the gateway key only authenticates the client to th
   base-url: "http://127.0.0.1:<bridge-port>/v1"
   priority: <int>            # higher wins; lower tier acts as fallback
   api-key-entries:
-    - api-key: "<gateway-local-key>"    # arbitrary; the bridge does not verify it
+    - api-key: "<gateway-local-key>"    # must be one of the bridge's own API keys (issued in the panel)
   models:
     - name: "<upstream-model-id>"       # the id the bridge accepts
       alias: "<prefix>/<friendly-name>" # what the client asks for
@@ -50,8 +50,10 @@ upstream account credential; the gateway key only authenticates the client to th
 - **`priority` semantics**: the gateway picks the highest-priority bucket that has an
   available upstream; lower buckets serve as fallback. Useful when the same model name
   exists on a paid channel and a free channel — the free one can lead.
-- **The bridge does not authenticate its callers.** Bind it to loopback and let the
-  gateway own client auth. Never expose it on a public interface.
+- **The bridge authenticates its callers itself**: every `/v1/*` call requires a Bearer
+  API key issued in the panel, and the admin API uses a separate session token. Loopback
+  plus a fronting gateway is still the recommended topology — if you do expose the port,
+  set a strong admin password first.
 - **One model per channel at first.** Register a single model, verify end-to-end, then add
   the rest. Registering 50 models before proving the path works makes failures ambiguous.
 

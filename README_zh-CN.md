@@ -16,7 +16,7 @@ OpenAI 兼容的 API 桥接器，将 Genspark 网页端封装成 OpenAI 风格�
 
 ### 1. 下载 exe
 
-从 Releases 页面下载 `genspark2api-v1.1.0.zip`，解压到一个**单独的文件夹**（比如 `C:\tools\genspark2api`）：
+从 [Releases 页面](https://github.com/fengye102/genspark2api/releases/latest) 下载最新版 `genspark2api-vX.Y.Z.zip`（附 SHA256 校验文件），解压到一个**单独的文件夹**（比如 `C:\tools\genspark2api`）：
 
 ```text
 C:\tools\genspark2api\
@@ -34,7 +34,7 @@ C:\tools\genspark2api\
 
 浏览器打开：`http://127.0.0.1:8899/`
 
-首次默认密码：**admin123**（进主页后建议立刻修改）
+首次默认密码：**admin123**（⚠️ 如果打算对局域网/公网开放端口，务必先改成强密码，见下方「安全提示」）
 
 ### 3. 添加账号（一键获取 Cookie）
 
@@ -92,7 +92,7 @@ curl http://127.0.0.1:8899/v1/chat/completions \
 
 ### 安全提示
 
-- 默认密码是 `admin123`，**不要直接把端口暴露给公网**
+- 默认密码是 `admin123`（部署模板里是 `change-me`，同样不安全），**开端口前必须先换成强密码**——面板一旦能被访问，别人就能管理你的账号、导出 Cookie、生成密钥
 - 如果想对外服务，建议先用环境变量设一个强密码：
 
 ```powershell
@@ -159,7 +159,7 @@ docker logs -f genspark2api
 ```
 
 - 数据（账号 / Cookie / 配置 / 日志）自动持久化到宿主机 `./data/`。
-- 改密码：在 `docker-compose.yml` 里设置 `GS_ADMIN_PASSWORD`，或登录后台 → 设置 里改。
+- ⚠️ 改密码（开端口前必做）：在 `docker-compose.yml` 里设置 `GS_ADMIN_PASSWORD`（模板默认 `change-me`）；也可登录后台 → 设置 里改。
 
 也可以不用 compose：
 
@@ -288,6 +288,8 @@ python -m PyInstaller --onefile --console --name genspark2api `
 ```
 
 构建产物在 `dist\genspark2api.exe`，约 70MB。
+
+> 官方 Release 的 exe 由 GitHub Actions 在打 tag 时自动构建（同时生成 SHA256 校验文件），一般不需要手动打包。
 
 ---
 
