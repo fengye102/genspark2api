@@ -46,7 +46,7 @@ MAP_FILE = os.environ.get("GS_ACCOUNTS", os.path.join(DATA, "accounts.json"))
 PORT = int(os.environ.get("GS_PORT", "8899"))
 # 监听地址：默认仅本机回环（Windows 双击场景安全）；容器/服务器用 GS_HOST=0.0.0.0
 HOST = os.environ.get("GS_HOST", "127.0.0.1")
-VERSION = "1.2.0"
+VERSION = "1.2.1"
 
 UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
       "(KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36")
@@ -582,12 +582,18 @@ app.add_middleware(
 )
 
 
+def _mask_email(email: str) -> str:
+    """脱敏邮箱 —— /health 无鉴权，不能暴露完整账号地址。"""
+    local, _, domain = (email or "").partition("@")
+    return f"{local[:2]}***@{domain}" if domain else f"{local[:2]}***"
+
+
 @app.get("/health")
 def health():
     return {
         "ok": True, "uptime_s": round(time.time() - START, 1),
         "accounts": [{
-            "seq": a.seq, "email": a.email[:26],
+            "seq": a.seq, "email": _mask_email(a.email),
             "ready": a.ready,
             "cooldown_left_s": max(0, round(a.cooldown_until - time.time())),
             "stats": a.stats,
@@ -1501,6 +1507,9 @@ def admin_page():
 if __name__ == "__main__":
     import uvicorn
     rlog("main", f"serving on {HOST}:{PORT} (v{VERSION})")
+    if ADMIN_PASSWORD in ("admin123", "change-me"):
+        rlog("warn", "管理员密码仍是默认值（admin123 / change-me）—— 开放端口前务必改成强密码："
+                     "环境变量 GS_ADMIN_PASSWORD，或面板 设置 → 修改管理员密码")
     # Windows 双击场景：启动后自动打开本机浏览器进入后台。
     # 服务器/容器（GS_HOST=0.0.0.0 或 GS_NO_BROWSER=1）不打开。
     if HOST in ("127.0.0.1", "localhost", "::1") \
