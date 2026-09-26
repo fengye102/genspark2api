@@ -1,0 +1,64 @@
+# 打 tag（v*）时自动构建 Windows 单文件 exe，并发布 Release（附 SHA256 校验文件）。
+# 也支持手动触发（Actions → build-release → Run workflow），产物在 workflow artifacts 里。
+name: build-release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  windows-exe:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install cloakbrowser pyinstaller
+
+      - name: Build single-file exe
+        run: >
+          python -m PyInstaller --onefile --console --name genspark2api
+          --add-data "accounts.example.json;."
+          --add-data "static;static"
+          --hidden-import cloakbrowser --hidden-import playwright
+          --collect-all cloakbrowser --collect-all playwright
+          genspark2api.py
+
+      - name: Package zip + SHA256
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path dist-pkg | Out-Null
+          Copy-Item dist/genspark2api.exe dist-pkg/
+          Copy-Item accounts.example.json dist-pkg/
+          Compress-Archive -Path dist-pkg/* -DestinationPath "genspark2api-${{ github.ref_name }}.zip"
+          $hash = (Get-FileHash "genspark2api-${{ github.ref_name }}.zip" -Algorithm SHA256).Hash
+          "$hash  genspark2api-${{ github.ref_name }}.zip" | Out-File -Encoding ascii "genspark2api-${{ github.ref_name }}.zip.sha256"
+
+      - name: Publish release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            genspark2api-*.zip
+            genspark2api-*.zip.sha256
+          generate_release_notes: true
+
+      - name: Upload build artifacts (manual runs)
+        if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: genspark2api-windows
+          path: |
+            genspark2api-*.zip
+            genspark2api-*.zip.sha256
